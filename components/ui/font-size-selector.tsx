@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect } from 'react';
-import { getChineseFontSizeOptions } from '@/lib/font-utils';
+import { getChineseFontSizeOptions, formatFontSizeWithChineseName } from '@/lib/font-utils';
 import { Input } from './input';
 import { Label } from './label';
 
@@ -23,31 +23,61 @@ export function FontSizeSelector({
 }: FontSizeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const options = getChineseFontSizeOptions();
+  const [displayValue, setDisplayValue] = useState(value);
+    // 根据value更新显示值
+  useEffect(() => {
+    // 检查是否是中文字号名称
+    const chineseSizeNames = options.map(opt => opt.value);
+    if (chineseSizeNames.includes(value)) {
+      // 找到对应的选项，显示完整标签（名称+磅值）
+      const selectedOption = options.find(opt => opt.value === value);
+      setDisplayValue(selectedOption ? selectedOption.label : value);
+    } else {
+      // 尝试将值转换为数字
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        // 显示格式化的字体大小（带中文字号名称如果匹配）
+        setDisplayValue(formatFontSizeWithChineseName(numValue));
+      } else {
+        // 无法解析为数字，直接使用原值
+        setDisplayValue(value);
+      }
+    }
+  }, [value, options]);
   
-  // 点击外部关闭下拉
+  // 点击外部关闭下拉，但允许在组件内点击
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      setIsOpen(false);
+      if (!(e.target as Element).closest(`#${id}-container`)) {
+        setIsOpen(false);
+      }
     }
     
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [id]);
+  
+  // 处理输入变化
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    onChange(inputValue); // 更新实际值
+    setDisplayValue(inputValue); // 临时更新显示值，等下一个useEffect会格式化它
+  };
+  
   return (
-    <div className="relative">
+    <div className="relative" id={`${id}-container`}>
       {label && <Label htmlFor={id}>{label}</Label>}
       <div className="relative">
         <Input
           id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={displayValue}
+          onChange={handleInputChange}
           placeholder={placeholder}
           onClick={(e) => {
             e.stopPropagation();
             setIsOpen(!isOpen);
           }}
-          className="pr-8"
+          className="pr-8 cursor-pointer"
         />
         <div 
           className="absolute inset-y-0 right-0 flex items-center pr-2 cursor-pointer"
@@ -76,7 +106,6 @@ export function FontSizeSelector({
       {isOpen && (
         <div 
           className="absolute z-10 mt-1 w-full bg-white dark:bg-zinc-800 rounded-md shadow-lg max-h-60 overflow-auto"
-          onClick={(e) => e.stopPropagation()}
         >
           <div className="py-1">
             {options.map((option) => (
@@ -85,6 +114,7 @@ export function FontSizeSelector({
                 className="px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700 cursor-pointer"
                 onClick={() => {
                   onChange(option.value);
+                  setDisplayValue(option.label);
                   setIsOpen(false);
                 }}
               >

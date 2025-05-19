@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import DocxProcessor from '@/lib/docx-processor';
+import DocxProcessor from '@/lib/docx-processor-integrated';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { FontModificationOptions } from '@/lib/docx-processor';
+import { FontModificationOptions } from '@/lib/docx-processor-integrated';
 import { convertChineseFontSize } from '@/lib/font-utils';
 
 // 确保上传目录和处理结果目录存在
@@ -18,15 +18,36 @@ async function ensureDir(dir: string) {
   }
 }
 
+// 应用文件名模板，替换占位符并清理文件名
+function applyFileNameTemplate(template: string, originalFileName: string): string {
+  // 从原始文件名中提取不带扩展名的部分作为默认标题
+  const titleWithoutExt = path.parse(originalFileName).name;
+  
+  // 替换模板中的占位符
+  let result = template
+    .replace(/\{title\}/g, titleWithoutExt)
+    .replace(/\{author\}/g, "Unknown") // 默认作者
+    .replace(/\{originalName\}/g, titleWithoutExt);
+  
+  // 清理文件名（删除不允许的字符）
+  result = result.replace(/[\/\\:*?"<>|]/g, "_");
+  
+  // 确保文件名不为空
+  if (result.trim() === "") {
+    result = "document";
+  }
+  
+  return result;
+}
+
 // 处理上传的 .docx 文件，修改字体和样式
 export async function POST(request: NextRequest) {
   try {
     // 确保处理目录存在
-    await ensureDir(PROCESSED_DIR);
-
-    const requestData = await request.json();
+    await ensureDir(PROCESSED_DIR);    const requestData = await request.json();
     const { 
       fileId, 
+      fileNameTemplate,
       titleOptions, 
       bodyOptions, 
       authorOptions 
@@ -45,14 +66,78 @@ export async function POST(request: NextRequest) {
     }
 
     const filePath = path.join(UPLOAD_DIR, targetFile);
-    const outputFileName = `modified_${targetFile}`;
+    
+    // 使用模板生成文件名
+    const fileNameBase = applyFileNameTemplate(fileNameTemplate || "{title}", targetFile);
+    const outputFileName = `${fileNameBase}${path.extname(targetFile)}`;
     const outputPath = path.join(PROCESSED_DIR, outputFileName);
     
     // 创建 DocxProcessor 实例
     const processor = new DocxProcessor();
-    
-    // 处理文档
-    try {      // 转换前端传递的选项为 FontModificationOptions 对象
+      // 处理文档
+    try {      // 准备多样式修改规则
+      const titleModificationRules = titleOptions?.modificationRules?.map((rule: {
+        originalStyleKey: string;
+        targetFontName?: string;
+        targetFontSize?: number;
+        targetIsBold?: boolean;
+        targetIsItalic?: boolean;
+        targetIsUnderline?: boolean;
+        targetColor?: string;
+        targetAlignment?: 'left' | 'center' | 'right' | 'justify';
+      }) => ({
+        originalStyleKey: rule.originalStyleKey,
+        targetFontName: rule.targetFontName,
+        targetFontSize: rule.targetFontSize ? 
+          convertChineseFontSize(rule.targetFontSize) : undefined,
+        targetIsBold: rule.targetIsBold,
+        targetIsItalic: rule.targetIsItalic,
+        targetIsUnderline: rule.targetIsUnderline,
+        targetColor: rule.targetColor,
+        targetAlignment: rule.targetAlignment,      })) || [];
+
+      const bodyModificationRules = bodyOptions?.modificationRules?.map((rule: {
+        originalStyleKey: string;
+        targetFontName?: string;
+        targetFontSize?: number;
+        targetIsBold?: boolean;
+        targetIsItalic?: boolean;
+        targetIsUnderline?: boolean;
+        targetColor?: string;
+        targetAlignment?: 'left' | 'center' | 'right' | 'justify';
+      }) => ({
+        originalStyleKey: rule.originalStyleKey,
+        targetFontName: rule.targetFontName,
+        targetFontSize: rule.targetFontSize ? 
+          convertChineseFontSize(rule.targetFontSize) : undefined,
+        targetIsBold: rule.targetIsBold,
+        targetIsItalic: rule.targetIsItalic,
+        targetIsUnderline: rule.targetIsUnderline,
+        targetColor: rule.targetColor,
+        targetAlignment: rule.targetAlignment,      })) || [];
+
+      const authorModificationRules = authorOptions?.modificationRules?.map((rule: {
+        originalStyleKey: string;
+        targetFontName?: string;
+        targetFontSize?: number;
+        targetIsBold?: boolean;
+        targetIsItalic?: boolean;
+        targetIsUnderline?: boolean;
+        targetColor?: string;
+        targetAlignment?: 'left' | 'center' | 'right' | 'justify';
+      }) => ({
+        originalStyleKey: rule.originalStyleKey,
+        targetFontName: rule.targetFontName,
+        targetFontSize: rule.targetFontSize ? 
+          convertChineseFontSize(rule.targetFontSize) : undefined,
+        targetIsBold: rule.targetIsBold,
+        targetIsItalic: rule.targetIsItalic,
+        targetIsUnderline: rule.targetIsUnderline,
+        targetColor: rule.targetColor,
+        targetAlignment: rule.targetAlignment,
+      })) || [];
+      
+      // 转换前端传递的选项为 FontModificationOptions 对象（保留这部分作为默认选项）
       const titleModOptions: FontModificationOptions | undefined = titleOptions ? {
         targetFontName: titleOptions.fontName,
         targetFontSize: titleOptions.fontSize ? 
@@ -64,7 +149,10 @@ export async function POST(request: NextRequest) {
         targetAlignment: titleOptions.alignment,
         addPrefix: titleOptions.prefix,
         addSuffix: titleOptions.suffix,
-      } : undefined;      const bodyModOptions: FontModificationOptions | undefined = bodyOptions ? {
+        modificationRules: titleModificationRules
+      } : undefined;
+      
+      const bodyModOptions: FontModificationOptions | undefined = bodyOptions ? {
         targetFontName: bodyOptions.fontName,
         targetFontSize: bodyOptions.fontSize ? 
           convertChineseFontSize(bodyOptions.fontSize) : undefined,
@@ -73,7 +161,10 @@ export async function POST(request: NextRequest) {
         targetIsUnderline: bodyOptions.isUnderline,
         targetColor: bodyOptions.color,
         targetAlignment: bodyOptions.alignment,
-      } : undefined;      const authorModOptions: FontModificationOptions | undefined = authorOptions ? {
+        modificationRules: bodyModificationRules
+      } : undefined;
+      
+      const authorModOptions: FontModificationOptions | undefined = authorOptions ? {
         targetFontName: authorOptions.fontName,
         targetFontSize: authorOptions.fontSize ? 
           convertChineseFontSize(authorOptions.fontSize) : undefined,
@@ -82,6 +173,7 @@ export async function POST(request: NextRequest) {
         targetIsUnderline: authorOptions.isUnderline,
         targetColor: authorOptions.color,
         targetAlignment: authorOptions.alignment,
+        modificationRules: authorModificationRules
       } : undefined;
 
       // 调用修改字体的方法

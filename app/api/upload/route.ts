@@ -2,20 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { mkdir } from 'fs/promises';
 import path from 'path';
-import { ProcessedDocument } from '@/app/types';
+import { ProcessedDocument, DocumentStatus } from '@/app/types';
+import { generateUUID } from '@/lib/utils';
 
 // 确保上传目录存在
 const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
 
 // 为文件创建唯一标识符并返回详细信息
-function createFileInfo(file: File): ProcessedDocument {
-  return {
-    id: crypto.randomUUID(),
+function createFileInfo(file: File): ProcessedDocument {  return {
+    id: generateUUID(), // 使用安全的 UUID 生成函数
     originalFileName: file.name,
     fileType: file.type,
     fileSize: file.size,
     uploadDate: new Date().toISOString(),
-    status: 'uploaded', // 初始状态设置为 'uploaded'
+    status: 'uploaded' as DocumentStatus, // 初始状态设置为 'uploaded'
   };
 }
 
@@ -56,16 +56,16 @@ export async function POST(request: NextRequest) {
           
           // 将文件内容转换为 ArrayBuffer
           const fileBuffer = await fileEntry.arrayBuffer();
-          
-          // 将文件保存到临时目录
+            // 将文件保存到临时目录
           // 注意：在 Vercel 部署时，这种方法不适用，需要使用云存储
           await writeFile(filePath, Buffer.from(fileBuffer));
-            // 更新文件信息对象，添加保存路径（仅用于本地开发）
+          
+          // 更新文件信息对象，添加保存路径（仅用于本地开发）
           const updatedFileInfo = {
             ...fileInfo,
             // 在实际部署中，这可能是一个指向云存储的 URL
             processedFileUrl: `/api/files/${fileInfo.id}${path.extname(fileEntry.name)}`,
-            status: 'uploaded_to_server', // 明确设置状态为可处理
+            status: 'uploaded_to_server' as const, // 明确设置状态为可处理
           };
           
           processedFiles.push(updatedFileInfo);
