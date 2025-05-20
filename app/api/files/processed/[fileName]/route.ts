@@ -10,8 +10,9 @@ const PROCESSED_DIR = path.join(process.cwd(), 'tmp', 'processed');
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fileName: string } }
+  context: { params: { fileName: string } }
 ) {
+  const { params } = context;
   try {
     const fileName = params.fileName;
     

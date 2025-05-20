@@ -19,14 +19,18 @@ async function ensureDir(dir: string) {
 }
 
 // 应用文件名模板，替换占位符并清理文件名
-function applyFileNameTemplate(template: string, originalFileName: string): string {
+function applyFileNameTemplate(template: string, originalFileName: string, titleText?: string, authorText?: string): string {
   // 从原始文件名中提取不带扩展名的部分作为默认标题
   const titleWithoutExt = path.parse(originalFileName).name;
   
+  // 使用传入的标题和作者信息，如果没有则使用默认值
+  const title = titleText || titleWithoutExt;
+  const author = authorText || "Unknown";
+  
   // 替换模板中的占位符
   let result = template
-    .replace(/\{title\}/g, titleWithoutExt)
-    .replace(/\{author\}/g, "Unknown") // 默认作者
+    .replace(/\{title\}/g, title)
+    .replace(/\{author\}/g, author)
     .replace(/\{originalName\}/g, titleWithoutExt);
   
   // 清理文件名（删除不允许的字符）
@@ -63,17 +67,33 @@ export async function POST(request: NextRequest) {
 
     if (!targetFile) {
       return NextResponse.json({ success: false, error: '找不到指定的文件' }, { status: 404 });
-    }
-
-    const filePath = path.join(UPLOAD_DIR, targetFile);
-    
-    // 使用模板生成文件名
-    const fileNameBase = applyFileNameTemplate(fileNameTemplate || "{title}", targetFile);
-    const outputFileName = `${fileNameBase}${path.extname(targetFile)}`;
-    const outputPath = path.join(PROCESSED_DIR, outputFileName);
+    }    const filePath = path.join(UPLOAD_DIR, targetFile);
     
     // 创建 DocxProcessor 实例
     const processor = new DocxProcessor();
+    
+    // 先分析文档，获取标题和作者信息
+    let titleText: string | undefined = undefined;
+    let authorText: string | undefined = undefined;
+    
+    try {
+      const analysisResult = await processor.analyzeDocument(filePath);
+      titleText = analysisResult.title?.text;
+      authorText = analysisResult.author?.text;
+    } catch (error) {
+      // 如果分析失败，继续使用默认文件名处理
+      console.warn('无法分析文档内容，将使用默认文件名:', error);
+    }
+    
+    // 使用模板生成文件名
+    const fileNameBase = applyFileNameTemplate(
+      fileNameTemplate || "{title}", 
+      targetFile,
+      titleText,
+      authorText
+    );
+    const outputFileName = `${fileNameBase}${path.extname(targetFile)}`;
+    const outputPath = path.join(PROCESSED_DIR, outputFileName);
       // 处理文档
     try {      // 准备多样式修改规则
       const titleModificationRules = titleOptions?.modificationRules?.map((rule: {

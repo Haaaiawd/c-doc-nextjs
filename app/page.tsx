@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef } from "react";
 import { useDropzone, FileWithPath } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,29 @@ export default function HomePage() {
   const [acceptedFilesList, setAcceptedFilesList] = useState<FileWithPath[]>([]);
   const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([]);
   const [processing, setProcessing] = useState(false);
+  
+  // 文件名模板输入框引用
+  const fileNameTemplateInputRef = useRef<HTMLInputElement>(null);
+
+  // 插入占位符到文件名模板
+  const insertPlaceholder = (placeholder: string) => {
+    const input = fileNameTemplateInputRef.current;
+    if (!input) return;
+
+    const startPos = input.selectionStart || 0;
+    const endPos = input.selectionEnd || 0;
+    const beforeText = fileNameTemplate.substring(0, startPos);
+    const afterText = fileNameTemplate.substring(endPos);
+    
+    const newValue = beforeText + placeholder + afterText;
+    setFileNameTemplate(newValue);
+    
+    // 设置焦点并将光标移动到插入的占位符后面
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(startPos + placeholder.length, startPos + placeholder.length);
+    }, 0);
+  };
   
   // 使用导入的 DocumentAnalysisData 类型
   const [documentAnalysis, setDocumentAnalysis] = useState<DocumentAnalysisData | null>(null);
@@ -402,7 +425,8 @@ export default function HomePage() {
             prevDocs.map(d => d.id === doc.id ? { 
               ...d, 
               status: 'completed' as const,
-              processedFileUrl: result.processedFileUrl
+              processedFileUrl: result.processedFileUrl,
+              processedFileName: result.processedFileName
             } : d)
           );
         } else {
@@ -676,7 +700,7 @@ export default function HomePage() {
       // 创建临时下载链接
       const link = document.createElement('a');
       link.href = file.processedFileUrl;
-      link.download = file.originalFileName || 'downloaded-file.docx';
+      link.download = file.processedFileName || file.originalFileName || 'downloaded-file.docx';
       link.style.display = 'none';
       return link;
     }).filter(Boolean);
@@ -972,10 +996,22 @@ export default function HomePage() {
                   placeholder="例如：{title}-{author}" 
                   value={fileNameTemplate}
                   onChange={(e) => setFileNameTemplate(e.target.value)}
+                  ref={fileNameTemplateInputRef}
                 />
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                   可用占位符: {"{title}"}, {"{author}"}, {"{originalName}"}
                 </p>
+                <div className="flex space-x-2 mt-2">
+                  <Button size="sm" variant="outline" onClick={() => insertPlaceholder("{title}")}>
+                    插入标题占位符
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => insertPlaceholder("{author}")}>
+                    插入作者占位符
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => insertPlaceholder("{originalName}")}>
+                    插入原文件名占位符
+                  </Button>
+                </div>
               </div>
               
               {/* Title Options */}

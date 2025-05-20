@@ -64,9 +64,9 @@ export interface ProcessedDocument {
   // 用户请求的修改参数 (针对 .docx)
   titleModification?: FontModification;
   bodyModification?: FontModification;
-
   // 处理结果
   processedFileUrl?: string; // 处理后（例如修改了字体）的文件的下载链接
+  processedFileName?: string; // 处理后的文件名（基于文件名模板生成）
   previewHtml?: string; // (可选) 文档内容的HTML预览，用于前端展示 (mammoth.js 对 .docx 效果好)
   errorMessage?: string; // 如果处理失败，记录错误信息
 }

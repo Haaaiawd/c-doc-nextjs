@@ -7,8 +7,9 @@ const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { fileId: string } }
+  context: { params: { fileId: string } }
 ) {
+  const { params } = context;
   try {
     const fileId = params.fileId;
     if (!fileId) {
