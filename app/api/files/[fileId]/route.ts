@@ -8,10 +8,10 @@ const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
 export async function GET(
   request: NextRequest,
   context: { params: { fileId: string } }
-) {
-  const { params } = context;
+) {  const { params } = context;
   try {
-    const fileId = params.fileId;
+    // Next.js 15.3.2要求在使用动态路由参数前必须await
+    const fileId = await Promise.resolve(params.fileId);
     if (!fileId) {
       return NextResponse.json({ error: 'File ID is required' }, { status: 400 });
     }    // 构建文件路径

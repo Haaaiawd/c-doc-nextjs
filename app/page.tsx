@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { useDropzone, FileWithPath } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import {
@@ -300,12 +300,12 @@ export default function HomePage() {
           const namesToClear = updatedFiles.map(f => f.originalFileName);
           setAcceptedFilesList(prevFiles => prevFiles.filter(file => !namesToClear.includes(file.name)));
 
-          // 如果有文件上传成功，自动分析第一个文件（已注释，避免覆盖当前分析文档）
-          // if (updatedFiles.length > 0 && updatedFiles[0].id) {
-          //   setTimeout(() => {
-          //     analyzeDocument(updatedFiles[0].id);
-          //   }, 500);
-          // }
+          // 如果有文件上传成功且当前没有正在编辑的文件，自动分析第一个文件
+          if (updatedFiles.length > 0 && updatedFiles[0].id && !currentEditingFileId) {
+            setTimeout(() => {
+              analyzeDocument(updatedFiles[0].id);
+            }, 500);
+          }
         } else {
           // 明确设置状态为'uploaded_to_server'
           setProcessedDocuments(prevDocs => {
@@ -364,6 +364,14 @@ export default function HomePage() {
         )) {
       alert('没有可处理的文档！');
       return;
+    }
+    
+    // 如果当前正在编辑文件但选择处理其他文件，先清除编辑状态
+    if (currentEditingFileId && singleFileId && currentEditingFileId !== singleFileId) {
+      resetUIState({
+        resetEditingFile: true,
+        resetDocumentAnalysis: true
+      });
     }
     
     // 设置处理中状态
@@ -456,6 +464,17 @@ export default function HomePage() {
       }
     }
     
+    // 处理完成后，如果当前编辑的文件也被处理了，更新UI以反映变化
+    if (singleFileId && currentEditingFileId === singleFileId) {
+      // 文件已处理，仍保持编辑状态，但可能需要重新分析更新后的文件
+      // 延迟一点时间再重新分析，确保处理已完成
+      setTimeout(() => {
+        if (currentEditingFileId) {
+          analyzeDocument(currentEditingFileId);
+        }
+      }, 500);
+    }
+    
     setProcessing(false);
   };
 
@@ -463,6 +482,12 @@ export default function HomePage() {
   const analyzeDocument = async (fileId: string) => {
     try {
       setIsAnalyzing(true);
+      // 如果切换到不同文件，先清除旧的分析数据
+      if (currentEditingFileId !== fileId) {
+        resetUIState({
+          resetDocumentAnalysis: true
+        });
+      }
       setCurrentEditingFileId(fileId); // 设置当前编辑的文件ID
       
       const formData = new FormData();
@@ -506,6 +531,7 @@ export default function HomePage() {
     // 如果当前已经在分析同一个文件，则不重复操作
     if (loadingFontUsage && currentFontAnalysisFileId === fileId) return;
     
+    // 保持当前编辑状态不变，仅设置字体分析状态
     setCurrentFontAnalysisFileId(fileId);
     setLoadingFontUsage(true);
     setFontUsageData(null);
@@ -669,15 +695,38 @@ export default function HomePage() {
     return window.confirm("确定要将当前设置应用到所有文件吗？");
   };
 
+  // 重置UI状态的辅助函数，用于避免状态混乱
+  const resetUIState = (options: {
+    resetEditingFile?: boolean,
+    resetFontAnalysis?: boolean,
+    resetDocumentAnalysis?: boolean,
+    resetFontUsage?: boolean
+  } = {}) => {
+    const { 
+      resetEditingFile = false, 
+      resetFontAnalysis = false,
+      resetDocumentAnalysis = false,
+      resetFontUsage = false 
+    } = options;
+    
+    if (resetEditingFile) setCurrentEditingFileId(null);
+    if (resetFontAnalysis) setCurrentFontAnalysisFileId(null);
+    if (resetDocumentAnalysis) setDocumentAnalysis(null);
+    if (resetFontUsage) setFontUsageData(null);
+  };
+  
   // 清空所有文件
   const clearAllFiles = () => {
     if (window.confirm("确定要清空所有文件吗？此操作不可恢复。")) {
       setProcessedDocuments([]);
       setAcceptedFilesList([]);
-      setCurrentEditingFileId(null);
-      setCurrentFontAnalysisFileId(null);
-      setFontUsageData(null);
-      setDocumentAnalysis(null);
+      // 使用resetUIState函数重置所有UI状态
+      resetUIState({
+        resetEditingFile: true,
+        resetFontAnalysis: true,
+        resetDocumentAnalysis: true,
+        resetFontUsage: true
+      });
     }
   };
 
@@ -718,6 +767,25 @@ export default function HomePage() {
       });
     }
   };
+
+  // 监听文件列表变化，确保UI状态一致
+  useEffect(() => {
+    // 如果当前编辑的文件不再存在于文件列表中，重置编辑状态
+    if (currentEditingFileId && !processedDocuments.some(doc => doc.id === currentEditingFileId)) {
+      resetUIState({
+        resetEditingFile: true,
+        resetDocumentAnalysis: true
+      });
+    }
+    
+    // 如果当前分析字体的文件不再存在于文件列表中，重置分析状态
+    if (currentFontAnalysisFileId && !processedDocuments.some(doc => doc.id === currentFontAnalysisFileId)) {
+      resetUIState({
+        resetFontAnalysis: true,
+        resetFontUsage: true
+      });
+    }
+  }, [processedDocuments, currentEditingFileId, currentFontAnalysisFileId]);
 
   return (
     <main className="container mx-auto p-4 md:p-8 lg:p-12">
@@ -905,6 +973,7 @@ export default function HomePage() {
                             size="sm"
                             onClick={() => analyzeDocument(doc.id)}
                             disabled={isAnalyzing}
+                            className={currentEditingFileId === doc.id ? "border-blue-500 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800" : ""}
                           >
                             {isAnalyzing && currentEditingFileId === doc.id 
                               ? "分析中..." 

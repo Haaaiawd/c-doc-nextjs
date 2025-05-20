@@ -887,43 +887,47 @@ export default class DocxProcessor {
     }[] = [];
     
     try {
-      let currentParagraphIndex = 0;
-      
-      // 修复: 确保docx对象存在且其parse方法可用
+      let currentParagraphIndex = 0;      // 修复: 确保docx对象存在且其parse方法可用
       if (docx && typeof docx.parse === 'function') {
-        await docx.parse((node: DocxNode) => {
-          if (node.tag === 'w:p') {
-            currentParagraphIndex++;
-          }
-        
-          // 检查是否是图片节点
-          if (node.tag === 'w:drawing' || node.tag === 'w:pict') {
-            // 增加健壮性检查，确保node.children是有效的数组
-            if (!node.children || !Array.isArray(node.children)) {
-              return true; // 没有子节点，继续遍历
+        try {
+          // 使用bind确保parse方法的this上下文正确
+          const parseFn = docx.parse.bind(docx);
+          await parseFn((node: DocxNode) => {
+            if (node.tag === 'w:p') {
+              currentParagraphIndex++;
             }
-            
-            // 找到图片数据
-            const imageNode = node.children.find((child: DocxNode) => 
-              child && (child.tag === 'w:binData' || child.tag === 'v:imagedata')
-            );
-            
-            if (imageNode && imageNode.val) {
-              const imageName = `image_${images.length + 1}`;
-              
-              // 提取图片数据
-              const imageData = {
-                name: imageName,
-                base64Data: `data:image/png;base64,${imageNode.val}`, // 假设是PNG格式
-                paragraphIndex: currentParagraphIndex
-              };
-              
-              images.push(imageData);
-            }
-          }
           
-          return true; // 继续遍历
-        });
+            // 检查是否是图片节点
+            if (node.tag === 'w:drawing' || node.tag === 'w:pict') {
+              // 增加健壮性检查，确保node.children是有效的数组
+              if (!node.children || !Array.isArray(node.children)) {
+                return true; // 没有子节点，继续遍历
+              }
+              
+              // 找到图片数据
+              const imageNode = node.children.find((child: DocxNode) => 
+                child && (child.tag === 'w:binData' || child.tag === 'v:imagedata')
+              );
+              
+              if (imageNode && imageNode.val) {
+                const imageName = `image_${images.length + 1}`;
+                
+                // 提取图片数据
+                const imageData = {
+                  name: imageName,
+                  base64Data: `data:image/png;base64,${imageNode.val}`, // 假设是PNG格式
+                  paragraphIndex: currentParagraphIndex
+                };
+                
+                images.push(imageData);
+              }
+            }
+            
+            return true; // 继续遍历
+          });
+        } catch (parseError) {
+          console.warn('解析文档结构时出错:', parseError);
+        }
       }
     } catch (error) {
       console.warn('提取图片时出错:', error);
