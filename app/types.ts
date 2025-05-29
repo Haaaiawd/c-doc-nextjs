@@ -103,3 +103,54 @@ export interface UploadedFile {
   progress?: number; // 上传进度 0-100
   errorMessage?: string;
 }
+
+/**
+ * 模板样式配置
+ */
+export interface TemplateStyle {
+  fontName: string;
+  fontSize: string; // 支持如"小四"、"14pt"等格式
+  isBold?: boolean;
+  isItalic?: boolean;
+  isUnderline?: boolean;
+  color?: string;
+  alignment?: 'left' | 'center' | 'right' | 'justify';
+}
+
+/**
+ * 文档模板定义
+ */
+export interface DocumentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  isPreset: boolean; // 是否为预设模板
+  createdAt: string;
+  updatedAt: string;
+  
+  // 各部分样式配置
+  titleStyle: TemplateStyle;
+  authorStyle: TemplateStyle;
+  bodyStyle: TemplateStyle;
+  
+  // 可选的额外配置
+  titlePrefix?: string;
+  titleSuffix?: string;
+  authorPrefix?: string;
+  authorSuffix?: string;
+}
+
+/**
+ * 预设模板类型
+ */
+export type PresetTemplateType = 'academic' | 'official' | 'report' | 'custom';
+
+/**
+ * 模板选择选项
+ */
+export interface TemplateOption {
+  value: string;
+  label: string;
+  description: string;
+  template: DocumentTemplate;
+}

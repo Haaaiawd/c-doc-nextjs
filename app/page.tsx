@@ -13,12 +13,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FontSizeSelector } from "@/components/ui/font-size-selector";
-import { ProcessedDocument, DocumentAnalysisData, FontInfo } from "./types";
+import { ProcessedDocument, DocumentAnalysisData, DocumentTemplate } from "./types";
 import { FontUsageDisplay } from "@/components/font-usage-display";
 import { UploadProgress } from "@/components/upload-progress";
+import { SimpleTemplateSelector } from "@/components/template-selector";
 import { getFontUsage } from "./api-client/get-font-usage";
 import { generateUUID } from "@/lib/utils";
+import { getDefaultTemplate } from "@/lib/preset-templates";
 
 export default function HomePage() {
   // 状态来存储已接受的文件和将被处理的文档
@@ -26,8 +27,12 @@ export default function HomePage() {
   const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([]);
   const [processing, setProcessing] = useState(false);
   
+  // 模板选择状态 - 简化的状态管理
+  const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate>(getDefaultTemplate());
+  
   // 文件名模板输入框引用
   const fileNameTemplateInputRef = useRef<HTMLInputElement>(null);
+  const [fileNameTemplate, setFileNameTemplate] = useState<string>("{title}-{author}");
 
   // 插入占位符到文件名模板
   const insertPlaceholder = (placeholder: string) => {
@@ -49,10 +54,10 @@ export default function HomePage() {
     }, 0);
   };
   
-  // 使用导入的 DocumentAnalysisData 类型
+  // 简化的文档分析状态
   const [documentAnalysis, setDocumentAnalysis] = useState<DocumentAnalysisData | null>(null);
   
-  // 字体分析相关的状态
+  // 字体分析相关的状态（保留用于预览）
   const [currentFontAnalysisFileId, setCurrentFontAnalysisFileId] = useState<string | null>(null);
   const [fontUsageData, setFontUsageData] = useState<Record<string, { count: number, samples: string[] }> | null>(null);
   const [loadingFontUsage, setLoadingFontUsage] = useState<boolean>(false);
@@ -64,80 +69,7 @@ export default function HomePage() {
   // 添加上传进度状态
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
 
-  const [titleOptions, setTitleOptions] = useState<DocumentPartOptions>({
-    enabled: false,
-    fontName: "微软雅黑",
-    fontSize: "小二",
-    isBold: true,
-    isItalic: false,
-    isUnderline: false,
-    color: "#000000",
-    alignment: "center",
-    prefix: "",
-    suffix: "",
-    detectedStyles: [],
-    modificationRules: []
-  });
-
-  const [authorOptions, setAuthorOptions] = useState<DocumentPartOptions>({
-    enabled: false,
-    fontName: "宋体",
-    fontSize: "小四",
-    isBold: false,
-    isItalic: false,
-    isUnderline: false,
-    color: "#000000",
-    alignment: "center",
-    detectedStyles: [],
-    modificationRules: []
-  });
-
-  const [bodyOptions, setBodyOptions] = useState<DocumentPartOptions>({
-    enabled: false,
-    fontName: "宋体",
-    fontSize: "五号",
-    isBold: false,
-    isItalic: false,
-    isUnderline: false,
-    color: "#000000",
-    alignment: "justify",
-    detectedStyles: [],
-    modificationRules: []
-  });
-
-  const [fileNameTemplate, setFileNameTemplate] = useState<string>("{title}-{author}");
-  
-  // 更新特定样式的规则（暂未使用，保留供未来功能扩展）
-  /* 
-  const handleRuleChange = (
-    partType: 'title' | 'author' | 'body', 
-    styleKey: string, 
-    property: keyof StyleModificationRule, 
-    value: string | boolean
-  ) => {
-    // 基于部件类型选择正确的状态更新函数
-    const setOptions = 
-      partType === 'title' ? setTitleOptions :
-      partType === 'author' ? setAuthorOptions :
-      setBodyOptions;
-    
-    // 更新状态
-    setOptions(prev => {
-      // 找到与给定样式键匹配的规则
-      const updatedRules = prev.modificationRules.map(rule => {
-        if (rule.originalStyleKey === styleKey) {
-          return { ...rule, [property]: value };
-        }
-        return rule;
-      });
-      
-      return { ...prev, modificationRules: updatedRules };
-    });
-  };
-  */
-
   const onDrop = useCallback((acceptedFiles: FileWithPath[]) => {
-    // 当文件被拖拽或选择时
     console.log("Accepted files:", acceptedFiles);
     
     // 过滤掉已存在的文件，避免重复
@@ -149,20 +81,19 @@ export default function HomePage() {
 
     // 将接受的文件转换为 ProcessedDocument 结构 (初步)
     const newDocuments: ProcessedDocument[] = acceptedFiles.map(file => ({
-      id: generateUUID(), // 使用安全的 UUID 生成函数
+      id: generateUUID(),
       originalFileName: file.name,
       fileType: file.type,
       fileSize: file.size,
       uploadDate: new Date().toISOString(),
-      status: 'selected', // 初始状态为 'selected'
+      status: 'selected',
     }));
     
-    // 累加到当前文档列表，避免添加重复的文件名
+    // 累加到当前文档列表
     setProcessedDocuments(prevDocs => {
       const existingFileNames = prevDocs.map(doc => doc.originalFileName);
       const uniqueNewDocs = newDocuments.filter(
         newDoc => !existingFileNames.includes(newDoc.originalFileName) || 
-                 // 如果文件名相同但状态是failed或completed，允许重新上传
                  prevDocs.some(doc => 
                    doc.originalFileName === newDoc.originalFileName && 
                    (doc.status === 'failed' || doc.status === 'completed')
@@ -174,16 +105,12 @@ export default function HomePage() {
 
   // 添加删除文件功能
   const removeFile = (fileId: string) => {
-    // 从acceptedFilesList中移除
     setAcceptedFilesList(prevFiles => {
       const docToRemove = processedDocuments.find(doc => doc.id === fileId);
       if (!docToRemove) return prevFiles;
-      
-      // 根据文件名匹配要删除的文件
       return prevFiles.filter(file => file.name !== docToRemove.originalFileName);
     });
     
-    // 从processedDocuments中移除
     setProcessedDocuments(prevDocs => 
       prevDocs.filter(doc => doc.id !== fileId)
     );
@@ -191,536 +118,311 @@ export default function HomePage() {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { // 只接受 .docx 文件
+    accept: {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
     },
-    multiple: true, // 允许选择多个文件
-  });    const handleUpload = async () => {
+    multiple: true,
+  });
+
+  const handleUpload = async () => {
     if (acceptedFilesList.length === 0) {
       alert("请先选择文件！");
       return;
     }
 
-    // 初始化每个文件的上传进度
-    const initialProgress: Record<string, number> = {};
-    // 获取当前要上传的文件名列表
-    const filesToUploadNames = acceptedFilesList.map(file => file.name);
-    // 只更新当前批次要上传的文件状态
-    const newProcessedDocs = processedDocuments.map(doc => {
-      // 如果文件在当前上传批次中，则设为uploading状态
-      if (filesToUploadNames.includes(doc.originalFileName) || doc.status === 'selected') {
-        initialProgress[doc.id] = 0;
-        return { ...doc, status: 'uploading' as const };
-      }
-      // 否则保持原状态不变
-      return doc;
-    });
-    setUploadProgress(initialProgress);
-    setProcessedDocuments(newProcessedDocs);
-    
-    // 创建 FormData 对象
-    const formData = new FormData();
-    acceptedFilesList.forEach(file => {
-      formData.append("files", file); // 后端API期望的字段名是 'files'
-    });
+    setProcessing(true);
 
-    // 定义上传响应类型
     interface UploadResponse {
       success: boolean;
       message?: string;
       files?: Array<Omit<ProcessedDocument, 'status'>>;
       error?: string;
     }
-    
-    // 声明result变量在try块外部，这样finally块也能访问
-    let result: UploadResponse | undefined;
 
     try {
-      // 使用 XMLHttpRequest 代替 fetch 以支持进度监控
-      const xhr = new XMLHttpRequest();
-      
-      // 创建一个Promise来包装XMLHttpRequest
-      const uploadPromise = new Promise<UploadResponse>((resolve, reject) => {
-        xhr.open("POST", "/api/upload", true);
-        
-        // 添加进度事件监听
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = Math.round((event.loaded / event.total) * 100);
-            
-            // 只为当前批次上传中的文件更新进度
-            const updatedProgress = { ...uploadProgress };
-            Object.keys(updatedProgress).forEach(id => {
-              updatedProgress[id] = percentComplete;
-            });
-            setUploadProgress(updatedProgress);
-          }
-        };
-        
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const responseData = JSON.parse(xhr.responseText);
-              resolve(responseData);
-            } catch {
-              reject(new Error('Invalid JSON response'));
-            }
-          } else {
-            reject(new Error(`HTTP Error: ${xhr.status}`));
-          }
-        };
-        
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.onabort = () => reject(new Error('Upload aborted'));
-        
-        // 发送请求
-        xhr.send(formData);
-      });
-      
-      // 等待上传完成
-      result = await uploadPromise;
-
-      console.log("Upload successful:", result);
-      
-      if (result.success) {
-        // 如果API返回了处理过的文件信息，则更新UI状态
-        if (result.files && Array.isArray(result.files)) {
-          // 确保上传成功后文件状态设置为'uploaded_to_server'
-          const updatedFiles = result.files.map((file) => ({
-            ...file,
-            status: 'uploaded_to_server' as const
-          }));
-          // 合并现有文档和新上传文档
-          setProcessedDocuments(prevDocs => {
-            const namesToReplace = updatedFiles.map(f => f.originalFileName);
-            const existingDocs = prevDocs.filter(doc => !namesToReplace.includes(doc.originalFileName));
-            return [...existingDocs, ...updatedFiles];
-          });
-          // 基于返回的updatedFiles清理acceptedFilesList，避免丢失其他文件
-          const namesToClear = updatedFiles.map(f => f.originalFileName);
-          setAcceptedFilesList(prevFiles => prevFiles.filter(file => !namesToClear.includes(file.name)));
-
-          // 如果有文件上传成功且当前没有正在编辑的文件，自动分析第一个文件
-          if (updatedFiles.length > 0 && updatedFiles[0].id && !currentEditingFileId) {
-            setTimeout(() => {
-              analyzeDocument(updatedFiles[0].id);
-            }, 500);
-          }
-        } else {
-          // 明确设置状态为'uploaded_to_server'
-          setProcessedDocuments(prevDocs => {
-            // 获取当前批次中的文件ID（状态为'selected'或'uploading'的文件）
-            const currentBatchIds = prevDocs
-              .filter(doc => doc.status === 'selected' || doc.status === 'uploading')
-              .map(doc => doc.id);
-              
-            // 只将当前上传批次中的文件状态改为'uploaded_to_server'
-            const updatedDocs = prevDocs.map(doc => 
-              currentBatchIds.includes(doc.id)
-                ? { ...doc, status: 'uploaded_to_server' as const } 
-                : doc
-            );
-            
-            // 找出当前批次中第一个上传成功的文件
-            const firstUploadedFile = updatedDocs.find(doc => 
-              currentBatchIds.includes(doc.id) && doc.status === 'uploaded_to_server');
-            
-            // 如果有文件上传成功，自动分析该文件
-            if (firstUploadedFile?.id) {
-              setTimeout(() => {
-                analyzeDocument(firstUploadedFile.id);
-              }, 500);
-            }
-            
-            return updatedDocs;
-          });
-          console.log("Files uploaded and status set to 'uploaded_to_server'");
-        }
-      } else {
-        console.error("Upload failed:", result?.error);
-        alert(`上传失败: ${result?.error || '未知错误'}`);
-        setProcessedDocuments(prevDocs =>
-          prevDocs.map(doc => ({ ...doc, status: 'failed', errorMessage: result?.error || 'Upload failed' }))
+      const currentBatchFiles = acceptedFilesList.filter(file => {
+        return processedDocuments.some(doc => 
+          doc.originalFileName === file.name && doc.status === 'selected'
         );
-      }
-    } catch (error) {
-      console.error("Error during upload:", error);
-      alert("上传过程中发生错误。");
-      setProcessedDocuments(prevDocs =>
-        prevDocs.map(doc => ({ ...doc, status: 'failed', errorMessage: 'Network or client-side error' }))
-      );
-    }    finally {
-      // 上传完成后acceptedFilesList的清理已在成功处理时完成，此处无需额外操作
-      // 如果上传失败，保留所有文件，允许用户重试
-    }
-  };
-
-  // 处理文档的函数 - 支持单个文件处理和批量处理
-  const handleProcessDocuments = async (singleFileId?: string) => {
-    // 检查是否有可处理的文档
-    if (processedDocuments.length === 0 || 
-        !processedDocuments.some(doc => 
-          doc.status === 'uploaded_to_server' || doc.status === 'completed'
-        )) {
-      alert('没有可处理的文档！');
-      return;
-    }
-    
-    // 如果当前正在编辑文件但选择处理其他文件，先清除编辑状态
-    if (currentEditingFileId && singleFileId && currentEditingFileId !== singleFileId) {
-      resetUIState({
-        resetEditingFile: true,
-        resetDocumentAnalysis: true
       });
-    }
-    
-    // 设置处理中状态
-    setProcessing(true);
-    
-    // 准备要处理的文档列表
-    const docsToProcess = singleFileId 
-      ? processedDocuments.filter(doc => 
-          doc.id === singleFileId && 
-          (doc.status === 'uploaded_to_server' || doc.status === 'completed')
+
+      if (currentBatchFiles.length === 0) {
+        alert("没有新文件需要上传！");
+        return;
+      }
+
+      const currentBatchIds = currentBatchFiles.map(file => {
+        const doc = processedDocuments.find(d => d.originalFileName === file.name);
+        return doc?.id;
+      }).filter(Boolean) as string[];
+
+      // 更新当前批次文件的状态为uploading
+      setProcessedDocuments(prevDocs => 
+        prevDocs.map(doc => 
+          currentBatchIds.includes(doc.id) 
+            ? { ...doc, status: 'uploading' as const }
+            : doc
         )
-      : processedDocuments.filter(doc => 
-          doc.status === 'uploaded_to_server' || doc.status === 'completed'
-        );
-    
-    if (docsToProcess.length === 0) {
-      alert('没有符合条件的文档可处理！');
-      setProcessing(false);
-      return;
-    }
-    
-    // 处理每个文档
-    for (const doc of docsToProcess) {
-      // 更新文档状态为处理中
-      setProcessedDocuments(prevDocs =>
-        prevDocs.map(d => d.id === doc.id ? { ...d, status: 'processing' as const } : d)
       );
-      
-      try {
-        const response = await fetch('/api/process/docx', {
-          method: 'POST',
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fileId: doc.id,
-            fileNameTemplate: fileNameTemplate, // 添加文件名模板
-            titleOptions: titleOptions.enabled ? {
-              ...titleOptions,
-              modificationRules: titleOptions.modificationRules
-            } : undefined,
-            bodyOptions: bodyOptions.enabled ? {
-              ...bodyOptions,
-              modificationRules: bodyOptions.modificationRules
-            } : undefined,
-            authorOptions: authorOptions.enabled ? {
-              ...authorOptions,
-              modificationRules: authorOptions.modificationRules
-            } : undefined
-          }),
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log("Processing successful:", result);
-          
-          // 更新文档状态
-          setProcessedDocuments(prevDocs =>
-            prevDocs.map(d => d.id === doc.id ? { 
-              ...d, 
-              status: 'completed' as const,
-              processedFileUrl: result.processedFileUrl,
-              processedFileName: result.processedFileName
-            } : d)
-          );
-        } else {
-          const errorResult = await response.json();
-          console.error("Processing failed:", errorResult);
-          
-          // 更新文档状态为失败
-          setProcessedDocuments(prevDocs =>
-            prevDocs.map(d => d.id === doc.id ? { 
-              ...d, 
-              status: 'failed' as const,
-              errorMessage: errorResult.error || 'Processing failed'
-            } : d)
-          );
-        }
-      } catch (error) {
-        console.error("Error during processing:", error);
-        
-        // 更新文档状态为失败
-        setProcessedDocuments(prevDocs =>
-          prevDocs.map(d => d.id === doc.id ? { 
-            ...d, 
-            status: 'failed',
-            errorMessage: 'Network or client-side error'
-          } : d)
-        );
-      }
-    }
-    
-    // 处理完成后，如果当前编辑的文件也被处理了，更新UI以反映变化
-    if (singleFileId && currentEditingFileId === singleFileId) {
-      // 文件已处理，仍保持编辑状态，但可能需要重新分析更新后的文件
-      // 延迟一点时间再重新分析，确保处理已完成
-      setTimeout(() => {
-        if (currentEditingFileId) {
-          analyzeDocument(currentEditingFileId);
-        }
-      }, 500);
-    }
-    
-    setProcessing(false);
-  };
 
-  // 文档分析函数
-  const analyzeDocument = async (fileId: string) => {
-    try {
-      setIsAnalyzing(true);
-      // 如果切换到不同文件，先清除旧的分析数据
-      if (currentEditingFileId !== fileId) {
-        resetUIState({
-          resetDocumentAnalysis: true
-        });
-      }
-      setCurrentEditingFileId(fileId); // 设置当前编辑的文件ID
-      
+      // 模拟上传进度
+      currentBatchIds.forEach(id => {
+        let progress = 0;
+        const interval = setInterval(() => {
+          progress += Math.random() * 20;
+          if (progress >= 90) {
+            setUploadProgress(prev => ({ ...prev, [id]: 90 }));
+            clearInterval(interval);
+          } else {
+            setUploadProgress(prev => ({ ...prev, [id]: progress }));
+          }
+        }, 200);
+      });
+
       const formData = new FormData();
-      formData.append('fileId', fileId);
+      currentBatchFiles.forEach((file) => {
+        formData.append('files', file);
+      });
 
-      const response = await fetch('/api/analyze/docx', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Document analysis:', result);
-        if (result.success && result.analysis) {
-          // 直接设置分析结果，如果API返回的结构与DocumentAnalysisData一致
-          // 或者进行必要的转换/断言
-          setDocumentAnalysis(result.analysis as DocumentAnalysisData); 
-          
-          // 自动填充到选项中
-          applyAnalysisResults(); // 自动应用分析结果
-          return result.analysis;
-        } else if (result.success && !result.analysis) {
-          console.warn("Analysis successful but no analysis data returned.");
-          setDocumentAnalysis(null); // 清空旧的分析数据
-        }
+      const result: UploadResponse = await response.json();
+
+      if (result.success && result.files) {
+        // 完成上传进度
+        currentBatchIds.forEach(id => {
+          setUploadProgress(prev => ({ ...prev, [id]: 100 }));
+        });
+
+        // 更新文档状态
+        setProcessedDocuments(prevDocs => 
+          prevDocs.map(doc => {
+            const uploadedFile = result.files!.find(f => f.originalFileName === doc.originalFileName);
+            if (uploadedFile && currentBatchIds.includes(doc.id)) {
+              return {
+                ...doc,
+                ...uploadedFile,
+                status: 'uploaded_to_server' as const
+              };
+            }
+            return doc;
+          })
+        );
+
+        alert(`成功上传 ${result.files.length} 个文件！`);
       } else {
-        console.error('Analysis failed:', await response.json());
-        setDocumentAnalysis(null); // 清空旧的分析数据
+        throw new Error(result.message || result.error || '上传失败');
       }
     } catch (error) {
-      console.error('Error analyzing document:', error);
-      setDocumentAnalysis(null); // 清空旧的分析数据
+      console.error('Upload error:', error);
+      alert(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      
+      // 恢复失败文件的状态
+      const currentBatchIds = acceptedFilesList.map(file => {
+        const doc = processedDocuments.find(d => d.originalFileName === file.name);
+        return doc?.id;
+      }).filter(Boolean) as string[];
+
+      setProcessedDocuments(prevDocs => 
+        prevDocs.map(doc => 
+          currentBatchIds.includes(doc.id) 
+            ? { ...doc, status: 'failed' as const, errorMessage: '上传失败' }
+            : doc
+        )
+      );
+    } finally {
+      setProcessing(false);
+      
+      // 清除当前批次的文件和进度，保留其他文件
+      const currentBatchFileNames = acceptedFilesList.map(file => file.name);
+      setAcceptedFilesList(prevFiles => 
+        prevFiles.filter(file => !currentBatchFileNames.includes(file.name))
+      );
+      
+      // 清除上传进度
+      setTimeout(() => {
+        setUploadProgress({});
+      }, 2000);
+    }
+  };
+
+  // 简化的文档处理函数 - 使用选定的模板
+  const handleProcessDocuments = async (singleFileId?: string) => {
+    if (!selectedTemplate) {
+      alert("请先选择文档模板！");
+      return;
+    }
+
+    const filesToProcess = singleFileId 
+      ? processedDocuments.filter(doc => doc.id === singleFileId)
+      : processedDocuments.filter(doc => 
+          doc.status === 'uploaded_to_server' || doc.status === 'completed'
+        );
+
+    if (filesToProcess.length === 0) {
+      alert("没有可处理的文件！");
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      for (const doc of filesToProcess) {
+        // 更新状态为处理中
+        setProcessedDocuments(prevDocs => 
+          prevDocs.map(d => 
+            d.id === doc.id ? { ...d, status: 'processing' } : d
+          )
+        );
+
+        const requestBody = {
+          fileId: doc.id,
+          fileNameTemplate,
+          template: selectedTemplate, // 使用选定的模板
+        };
+
+        const response = await fetch('/api/process/docx', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setProcessedDocuments(prevDocs => 
+            prevDocs.map(d => 
+              d.id === doc.id 
+                ? { 
+                    ...d, 
+                    status: 'completed',
+                    processedFileUrl: result.processedFileUrl,
+                    processedFileName: result.processedFileName,
+                    targetFileName: result.targetFileName,
+                  } 
+                : d
+            )
+          );
+        } else {
+          setProcessedDocuments(prevDocs => 
+            prevDocs.map(d => 
+              d.id === doc.id 
+                ? { 
+                    ...d, 
+                    status: 'failed',
+                    errorMessage: result.message || '处理失败'
+                  } 
+                : d
+            )
+          );
+        }
+      }
+
+      const successCount = filesToProcess.length;
+      alert(`处理完成！成功处理 ${successCount} 个文件。`);
+    } catch (error) {
+      console.error('Processing error:', error);
+      alert(`处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // 保留文档分析功能用于预览
+  const analyzeDocument = async (fileId: string) => {
+    setIsAnalyzing(true);
+    setCurrentEditingFileId(fileId);
+    
+    try {
+      const response = await fetch('/api/analyze/docx', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`分析请求失败: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setDocumentAnalysis(result.data);
+      } else {
+        throw new Error(result.message || '分析失败');
+      }
+    } catch (error) {
+      console.error('Analysis error:', error);
+      alert(`文档分析失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsAnalyzing(false);
     }
-    return null;
   };
 
-  // 字体分析函数
+  // 保留字体分析功能
   const handleAnalyzeFonts = async (fileId: string) => {
-    // 如果当前已经在分析同一个文件，则不重复操作
-    if (loadingFontUsage && currentFontAnalysisFileId === fileId) return;
-    
-    // 保持当前编辑状态不变，仅设置字体分析状态
-    setCurrentFontAnalysisFileId(fileId);
     setLoadingFontUsage(true);
-    setFontUsageData(null);
+    setCurrentFontAnalysisFileId(fileId);
     
     try {
-      const result = await getFontUsage(fileId);
-      if (result.success) {
-        setFontUsageData(result.fontUsage);
-      } else {
-        console.error('获取字体分析失败:', result.error);
-        // 可以显示错误信息或提醒
-      }
+      const fontUsage = await getFontUsage(fileId);
+      setFontUsageData(fontUsage);
     } catch (error) {
-      console.error('字体分析过程出错:', error);
-      // 可以显示错误信息或提醒
+      console.error('Font analysis error:', error);
+      alert(`字体分析失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      setFontUsageData(null);
     } finally {
       setLoadingFontUsage(false);
     }
   };
 
-  // Define a type for individual style modification rules
-  interface StyleModificationRule {
-    originalStyleKey: string; // To link back to the detected style
-    targetFontName: string;
-    targetFontSize: string;
-    targetIsBold: boolean;
-    targetIsItalic: boolean;
-    targetIsUnderline: boolean;
-    targetColor: string;
-    targetAlignment: string;
-  }
-  
-  // Define a type for the options for each document part, now including detected styles and rules
-  interface DocumentPartOptions {
-    enabled: boolean;
-    fontName: string; // General/fallback font name
-    fontSize: string; // General/fallback font size
-    isBold: boolean;
-    isItalic: boolean;
-    isUnderline: boolean;
-    color: string;
-    alignment: string;
-    prefix?: string; // Specific to title
-    suffix?: string; // Specific to title
-    detectedStyles: FontInfo[]; // Styles detected by analysis
-    modificationRules: StyleModificationRule[]; // User-defined rules for each detected style
-  }
-
-  // 应用分析结果到设置
-  const applyAnalysisResults = () => {
-    if (!documentAnalysis) return;
-
-    // Helper function to create a default modification rule for a style
-    const createDefaultModificationRule = (style: FontInfo) => ({
-      originalStyleKey: style.originalStyleKey || generateUUID(), // 使用安全的 UUID 生成函数
-      targetFontName: style.name || "",
-      targetFontSize: style.size?.toString() || "",
-      targetIsBold: style.isBold || false,
-      targetIsItalic: style.isItalic || false,
-      targetIsUnderline: style.isUnderline || false,
-      targetColor: style.color || "",
-      targetAlignment: style.alignment || "left", // Default alignment
-    });
-
-    if (documentAnalysis.title?.styles && documentAnalysis.title.styles.length > 0) {
-      // 使用一个临时变量存储title样式，确保类型安全
-      const titleStyles = documentAnalysis.title.styles;
-      setTitleOptions(prev => ({
-        ...prev,
-        enabled: true, // Enable if analysis provides data
-        // For simplicity, let's assume we apply the first detected style's properties
-        // to the main options, and store all detected styles for detailed modification
-        fontName: titleStyles[0].name || '',
-        fontSize: titleStyles[0].size?.toString() || '',
-        isBold: titleStyles[0].isBold || false,
-        isItalic: titleStyles[0].isItalic || false,
-        isUnderline: titleStyles[0].isUnderline || false,
-        alignment: titleStyles[0].alignment || prev.alignment,
-        // Store all detected styles for detailed modification UI
-        detectedStyles: titleStyles,
-        // Initialize modification rules based on detected styles
-        modificationRules: titleStyles.map(createDefaultModificationRule)
-      }));
-    } else {
-      // If no title styles detected, reset or keep existing, but clear detectedStyles and rules
-      setTitleOptions(prev => ({ ...prev, detectedStyles: [], modificationRules: [] }));
-    }
-
-    if (documentAnalysis.author?.styles && documentAnalysis.author.styles.length > 0) {
-      // 使用临时变量存储author样式，确保类型安全
-      const authorStyles = documentAnalysis.author.styles;
-      setAuthorOptions(prev => ({
-        ...prev,
-        enabled: true,
-        fontName: authorStyles[0].name || '',
-        fontSize: authorStyles[0].size?.toString() || '',
-        isBold: authorStyles[0].isBold || false,
-        isItalic: authorStyles[0].isItalic || false,
-        isUnderline: authorStyles[0].isUnderline || false,
-        alignment: authorStyles[0].alignment || prev.alignment,
-        detectedStyles: authorStyles,
-        modificationRules: authorStyles.map(createDefaultModificationRule)
-      }));
-    } else {
-      setAuthorOptions(prev => ({ ...prev, detectedStyles: [], modificationRules: [] }));
-    }
-
-    if (documentAnalysis.bodyStyles && documentAnalysis.bodyStyles.length > 0) {
-      // 使用临时变量存储body样式，确保类型安全
-      const bodyStyles = documentAnalysis.bodyStyles;
-      setBodyOptions(prev => ({
-        ...prev,
-        enabled: true,
-        // For simplicity, apply first detected body style to main options
-        fontName: bodyStyles[0].name || '',
-        fontSize: bodyStyles[0].size?.toString() || '',
-        isBold: bodyStyles[0].isBold || false,
-        isItalic: bodyStyles[0].isItalic || false,
-        isUnderline: bodyStyles[0].isUnderline || false,
-        alignment: bodyStyles[0].alignment || prev.alignment,
-        detectedStyles: bodyStyles,
-        modificationRules: bodyStyles.map(createDefaultModificationRule)
-      }));
-    } else {
-      setBodyOptions(prev => ({ ...prev, detectedStyles: [], modificationRules: [] }));
-    }
-  };
-
-  // 将当前设置应用到所有文件
+  // 批量应用设置
   const applySettingsToAllFiles = async () => {
-    if (!confirmBeforeBatchOperation()) return;
-    
-    // 记录当前所有设置状态，确保样式和启用状态都被应用
-    const currentTitleSettings = {...titleOptions};
-    const currentAuthorSettings = {...authorOptions};
-    const currentBodySettings = {...bodyOptions};
-    
-    // 应用设置到所有可处理的文件(包括已上传和已完成的文件)
-    const filesToProcess = processedDocuments.filter(doc => 
-      doc.status === 'uploaded_to_server' || doc.status === 'completed'
-    );
-    
-    if (filesToProcess.length === 0) {
-      alert('没有可处理的文件！');
+    if (!selectedTemplate) {
+      alert("请先选择文档模板！");
       return;
     }
     
-    if (window.confirm("是否也应用字体样式设置的启用状态？")) {
-      // 如果用户确认，我们将启用状态也应用到所有文件
-      setTitleOptions(currentTitleSettings);
-      setAuthorOptions(currentAuthorSettings);
-      setBodyOptions(currentBodySettings);
+    const confirmed = confirm(`确定要使用"${selectedTemplate.name}"模板处理所有文件吗？`);
+    if (confirmed) {
+      await handleProcessDocuments();
     }
-    
-    // 批量处理所有文件
-    handleProcessDocuments();
   };
 
-  // 确认批量操作
-  const confirmBeforeBatchOperation = () => {
-    return window.confirm("确定要将当前设置应用到所有文件吗？");
-  };
-
-  // 重置UI状态的辅助函数，用于避免状态混乱
+  // UI状态重置
   const resetUIState = (options: {
     resetEditingFile?: boolean,
     resetFontAnalysis?: boolean,
     resetDocumentAnalysis?: boolean,
     resetFontUsage?: boolean
   } = {}) => {
-    const { 
-      resetEditingFile = false, 
-      resetFontAnalysis = false,
-      resetDocumentAnalysis = false,
-      resetFontUsage = false 
-    } = options;
-    
-    if (resetEditingFile) setCurrentEditingFileId(null);
-    if (resetFontAnalysis) setCurrentFontAnalysisFileId(null);
-    if (resetDocumentAnalysis) setDocumentAnalysis(null);
-    if (resetFontUsage) setFontUsageData(null);
+    if (options.resetEditingFile) {
+      setCurrentEditingFileId(null);
+    }
+    if (options.resetFontAnalysis) {
+      setCurrentFontAnalysisFileId(null);
+    }
+    if (options.resetDocumentAnalysis) {
+      setDocumentAnalysis(null);
+    }
+    if (options.resetFontUsage) {
+      setFontUsageData(null);
+    }
   };
-  
+
   // 清空所有文件
   const clearAllFiles = () => {
-    if (window.confirm("确定要清空所有文件吗？此操作不可恢复。")) {
-      setProcessedDocuments([]);
+    const confirmed = confirm("确定要清空所有文件吗？此操作不可撤销。");
+    if (confirmed) {
       setAcceptedFilesList([]);
-      // 使用resetUIState函数重置所有UI状态
+      setProcessedDocuments([]);
       resetUIState({
         resetEditingFile: true,
         resetFontAnalysis: true,
@@ -730,23 +432,20 @@ export default function HomePage() {
     }
   };
 
-  // 下载所有已处理文件
+  // 下载所有处理后的文件
   const downloadAllProcessedFiles = () => {
-    // 找出所有已处理完成且有下载链接的文件
-    const completedFiles = processedDocuments.filter(
-      doc => doc.status === 'completed' && doc.processedFileUrl
+    const completedFiles = processedDocuments.filter(doc => 
+      doc.status === 'completed' && doc.processedFileUrl
     );
     
     if (completedFiles.length === 0) {
-      alert('没有已处理完成的文件可下载！');
+      alert("没有可下载的处理后文件！");
       return;
     }
-
-    // 创建一个隐藏的下载链接列表，并点击它们
+    
     const downloadLinks = completedFiles.map(file => {
       if (!file.processedFileUrl) return null;
       
-      // 创建临时下载链接
       const link = document.createElement('a');
       link.href = file.processedFileUrl;
       link.download = file.processedFileName || file.originalFileName || 'downloaded-file.docx';
@@ -754,12 +453,9 @@ export default function HomePage() {
       return link;
     }).filter(Boolean);
     
-    // 依次下载所有文件
     if (downloadLinks.length > 0) {
-      // 提示用户将开始下载多个文件
       alert(`即将下载 ${downloadLinks.length} 个文件，请确保允许浏览器下载多个文件。`);
       
-      // 添加链接到文档并依次点击
       downloadLinks.forEach(link => {
         document.body.appendChild(link!);
         link!.click();
@@ -770,7 +466,6 @@ export default function HomePage() {
 
   // 监听文件列表变化，确保UI状态一致
   useEffect(() => {
-    // 如果当前编辑的文件不再存在于文件列表中，重置编辑状态
     if (currentEditingFileId && !processedDocuments.some(doc => doc.id === currentEditingFileId)) {
       resetUIState({
         resetEditingFile: true,
@@ -778,7 +473,6 @@ export default function HomePage() {
       });
     }
     
-    // 如果当前分析字体的文件不再存在于文件列表中，重置分析状态
     if (currentFontAnalysisFileId && !processedDocuments.some(doc => doc.id === currentFontAnalysisFileId)) {
       resetUIState({
         resetFontAnalysis: true,
@@ -791,22 +485,22 @@ export default function HomePage() {
     <main className="container mx-auto p-4 md:p-8 lg:p-12">
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-          C-Doc Next - 文档批量处理工具
+          C-Doc Next - 文档批量处理工具 (精简版)
         </h1>
         <p className="mt-2 text-lg text-zinc-600 dark:text-zinc-400">
-          轻松处理您的 .docx 文档：提取信息、修改样式、批量操作。
+          选择模板，轻松批量处理您的 .docx 文档。
         </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 左侧布局：文件上传 + 文件列表与结果 */}
+        {/* 左侧布局：文件上传 + 文件列表 */}
         <div className="lg:col-span-1 space-y-6">
           {/* Section 1: File Upload */}
           <Card>
             <CardHeader>
               <CardTitle>1. 文件上传</CardTitle>
               <CardDescription>
-                选择要处理的文件
+                选择要处理的 .docx 文件
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -847,7 +541,7 @@ export default function HomePage() {
               </div>
               {acceptedFilesList.length > 0 && (
                 <>
-                  <Button onClick={handleUpload} className="w-full mt-4">
+                  <Button onClick={handleUpload} className="w-full mt-4" disabled={processing}>
                     上传 {acceptedFilesList.length} 个文件
                   </Button>
                   <div className="mt-4 space-y-2 max-h-32 overflow-y-auto">
@@ -863,7 +557,7 @@ export default function HomePage() {
             </CardContent>
           </Card>
 
-          {/* Section 3: File List & Status / Results (Moved under File Upload) */}
+          {/* Section 3: File List & Results */}
           <Card>
             <CardHeader>
               <CardTitle>3. 文件列表与结果</CardTitle>
@@ -882,7 +576,7 @@ export default function HomePage() {
                 </div>
               )}
               
-              {/* 添加批量操作按钮 */}
+              {/* 批量操作按钮 */}
               {processedDocuments.length > 0 && (
                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-md">
                   <h3 className="font-medium mb-2">批量操作</h3>
@@ -894,7 +588,7 @@ export default function HomePage() {
                         onClick={applySettingsToAllFiles}
                         disabled={processing}
                       >
-                        一键应用设置到所有文件
+                        批量应用模板处理
                       </Button>
                     )}
                     {processedDocuments.some(doc => doc.status === 'completed' && doc.processedFileUrl) && (
@@ -966,20 +660,17 @@ export default function HomePage() {
                         }
                       </p>
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {/* 编辑按钮 */}
+                        {/* 预览按钮 */}
                         {(doc.status === 'uploaded_to_server' || doc.status === 'completed') && (
                           <Button 
                             variant={currentEditingFileId === doc.id ? "default" : "outline"}
                             size="sm"
                             onClick={() => analyzeDocument(doc.id)}
                             disabled={isAnalyzing}
-                            className={currentEditingFileId === doc.id ? "border-blue-500 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900 dark:hover:bg-blue-800" : ""}
                           >
                             {isAnalyzing && currentEditingFileId === doc.id 
                               ? "分析中..." 
-                              : currentEditingFileId === doc.id
-                                ? "正在编辑"
-                                : "编辑"
+                              : "预览分析"
                             }
                           </Button>
                         )}
@@ -994,11 +685,11 @@ export default function HomePage() {
                           >
                             {loadingFontUsage && currentFontAnalysisFileId === doc.id 
                               ? "分析中..." 
-                              : "分析字体"}
+                              : "字体分析"}
                           </Button>
                         )}
                         
-                        {/* 应用处理按钮 - 支持上传后或已处理完成的文件 */}
+                        {/* 应用模板处理按钮 */}
                         {(doc.status === 'uploaded_to_server' || doc.status === 'completed') && (
                           <Button 
                             variant="outline" 
@@ -1006,7 +697,7 @@ export default function HomePage() {
                             onClick={() => handleProcessDocuments(doc.id)}
                             disabled={processing}
                           >
-                            应用设置并处理
+                            应用模板处理
                           </Button>
                         )}
                         
@@ -1047,17 +738,33 @@ export default function HomePage() {
           </Card>
         </div>
 
-        {/* 右侧布局：处理选项 */}
-        <div className="lg:col-span-1">
-          {/* Section 2: Processing Options */}
+        {/* 右侧布局：模板选择和基本配置 */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Section 2: Template Selection */}
           <Card>
             <CardHeader>
-              <CardTitle>2. 处理选项</CardTitle>
+              <CardTitle>2. 模板选择</CardTitle>
               <CardDescription>
-                配置文档处理参数。
+                选择预设模板或创建自定义模板。
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
+              <SimpleTemplateSelector
+                selectedTemplate={selectedTemplate}
+                onTemplateSelect={setSelectedTemplate}
+              />
+            </CardContent>
+          </Card>
+
+          {/* 文件名配置 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>文件名配置</CardTitle>
+              <CardDescription>
+                设置处理后文件的命名规则。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
               <div>
                 <Label htmlFor="targetFileName">目标文件名模板</Label>
                 <Input 
@@ -1070,299 +777,64 @@ export default function HomePage() {
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                   可用占位符: {"{title}"}, {"{author}"}, {"{originalName}"}
                 </p>
-                <div className="flex space-x-2 mt-2">
+                <div className="flex space-x-1 mt-2">
                   <Button size="sm" variant="outline" onClick={() => insertPlaceholder("{title}")}>
-                    插入标题占位符
+                    标题
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => insertPlaceholder("{author}")}>
-                    插入作者占位符
+                    作者
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => insertPlaceholder("{originalName}")}>
-                    插入原文件名占位符
+                    原文件名
                   </Button>
                 </div>
               </div>
-              
-              {/* Title Options */}
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium">标题样式设置</p>
-                  <div className="flex items-center">
-                    <input
-                      id="titleEnabled"
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300"
-                      checked={titleOptions.enabled}
-                      onChange={(e) => setTitleOptions({...titleOptions, enabled: e.target.checked})}
-                    />
-                    <Label htmlFor="titleEnabled" className="ml-2">启用修改</Label>
-                  </div>
-                </div>
-                
-                {documentAnalysis?.title && (
+            </CardContent>
+          </Card>
+
+          {/* 文档预览 */}
+          {documentAnalysis && (
+            <Card>
+              <CardHeader>
+                <CardTitle>文档预览</CardTitle>
+                <CardDescription>
+                  查看文档分析结果
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {documentAnalysis.title && (
                   <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
                     <div className="flex items-center text-sm">
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                       </svg>
-                      <span className="font-medium text-blue-700">系统识别的标题:</span>
+                      <span className="font-medium text-blue-700">检测到的标题:</span>
                     </div>
                     <p className="mt-1 text-sm font-semibold truncate" title={documentAnalysis.title.text}>
                       {documentAnalysis.title.text}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      识别到的字体: {documentAnalysis.title.styles[0]?.name || '未知'} 
-                      {documentAnalysis.title.styles[0]?.size ? ` (${documentAnalysis.title.styles[0].size}pt)` : ''}
-                    </p>
                   </div>
                 )}
                 
-                <div className={`grid grid-cols-2 gap-3 ${titleOptions.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
-                  <div>
-                    <Label htmlFor="titleFontName">字体名称</Label>
-                    <Input 
-                      id="titleFontName" 
-                      placeholder="例如：微软雅黑" 
-                      value={titleOptions.fontName}
-                      onChange={(e) => setTitleOptions({...titleOptions, fontName: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <FontSizeSelector
-                      id="titleFontSize"
-                      label=""
-                      placeholder="例如：小四、22"
-                      value={titleOptions.fontSize}
-                      onChange={(value) => setTitleOptions({...titleOptions, fontSize: value})}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label htmlFor="titlePrefix">标题前缀</Label>
-                    <Input 
-                      id="titlePrefix" 
-                      placeholder="添加到标题前的文本" 
-                      value={titleOptions.prefix}
-                      onChange={(e) => setTitleOptions({...titleOptions, prefix: e.target.value})}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Label htmlFor="titleSuffix">标题后缀</Label>
-                    <Input 
-                      id="titleSuffix" 
-                      placeholder="添加到标题后的文本" 
-                      value={titleOptions.suffix}
-                      onChange={(e) => setTitleOptions({...titleOptions, suffix: e.target.value})}
-                    />
-                  </div>
-                  <div className="col-span-2 flex space-x-4">
-                    <div className="flex items-center">
-                      <input
-                        id="titleBold"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={titleOptions.isBold}
-                        onChange={(e) => setTitleOptions({...titleOptions, isBold: e.target.checked})}
-                      />
-                      <Label htmlFor="titleBold" className="ml-2">粗体</Label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="titleItalic"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={titleOptions.isItalic}
-                        onChange={(e) => setTitleOptions({...titleOptions, isItalic: e.target.checked})}
-                      />
-                      <Label htmlFor="titleItalic" className="ml-2">斜体</Label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="titleUnderline"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={titleOptions.isUnderline}
-                        onChange={(e) => setTitleOptions({...titleOptions, isUnderline: e.target.checked})}
-                      />
-                      <Label htmlFor="titleUnderline" className="ml-2">下划线</Label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Author Options */}
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium">作者样式设置</p>
-                  <div className="flex items-center">
-                    <input
-                      id="authorEnabled"
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300"
-                      checked={authorOptions.enabled}
-                      onChange={(e) => setAuthorOptions({...authorOptions, enabled: e.target.checked})}
-                    />
-                    <Label htmlFor="authorEnabled" className="ml-2">启用修改</Label>
-                  </div>
-                </div>
-                
-                {documentAnalysis?.author && (
+                {documentAnalysis.author && (
                   <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-md">
                     <div className="flex items-center text-sm">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      <span className="font-medium text-green-700">系统识别的作者:</span>
+                      <span className="font-medium text-green-700">检测到的作者:</span>
                     </div>
-                    <p className="mt-1 text-sm font-semibold truncate" title={documentAnalysis.author.text}>
-                      {documentAnalysis.author.text}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      识别到的字体: {documentAnalysis.author.styles[0]?.name || '未知'} 
-                      {documentAnalysis.author.styles[0]?.size ? ` (${documentAnalysis.author.styles[0].size}pt)` : ''}
-                    </p>
+                    <p className="mt-1 text-sm">{documentAnalysis.author.text}</p>
                   </div>
                 )}
-                
-                <div className={`grid grid-cols-2 gap-3 ${authorOptions.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
-                  <div>
-                    <Label htmlFor="authorFontName">字体名称</Label>
-                    <Input 
-                      id="authorFontName" 
-                      placeholder="例如：宋体" 
-                      value={authorOptions.fontName}
-                      onChange={(e) => setAuthorOptions({...authorOptions, fontName: e.target.value})}
-                    />
+
+                {documentAnalysis.wordCount && (
+                  <div className="text-sm text-zinc-600">
+                    字数统计: {documentAnalysis.wordCount} 字
                   </div>
-                  <div>
-                    <FontSizeSelector
-                      id="authorFontSize"
-                      label=""
-                      placeholder="例如：小四、12"
-                      value={authorOptions.fontSize}
-                      onChange={(value) => setAuthorOptions({...authorOptions, fontSize: value})}
-                    />
-                  </div>
-                  <div className="col-span-2 flex space-x-4">
-                    <div className="flex items-center">
-                      <input
-                        id="authorBold"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={authorOptions.isBold}
-                        onChange={(e) => setAuthorOptions({...authorOptions, isBold: e.target.checked})}
-                      />
-                      <Label htmlFor="authorBold" className="ml-2">粗体</Label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="authorItalic"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={authorOptions.isItalic}
-                        onChange={(e) => setAuthorOptions({...authorOptions, isItalic: e.target.checked})}
-                      />
-                      <Label htmlFor="authorItalic" className="ml-2">斜体</Label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="authorUnderline"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={authorOptions.isUnderline}
-                        onChange={(e) => setAuthorOptions({...authorOptions, isUnderline: e.target.checked})}
-                      />
-                      <Label htmlFor="authorUnderline" className="ml-2">下划线</Label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Body Options */}
-              <div className="border-t pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium">正文样式设置</p>
-                  <div className="flex items-center">
-                    <input
-                      id="bodyEnabled"
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300"
-                      checked={bodyOptions.enabled}
-                      onChange={(e) => setBodyOptions({...bodyOptions, enabled: e.target.checked})}
-                    />
-                    <Label htmlFor="bodyEnabled" className="ml-2">启用修改</Label>
-                  </div>
-                </div>
-                <div className={`grid grid-cols-2 gap-3 ${bodyOptions.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
-                  <div>
-                    <Label htmlFor="bodyFontName">字体名称</Label>
-                    <Input 
-                      id="bodyFontName" 
-                      placeholder="例如：宋体" 
-                      value={bodyOptions.fontName}
-                      onChange={(e) => setBodyOptions({...bodyOptions, fontName: e.target.value})}
-                    />
-                  </div>
-                  <div>
-                    <FontSizeSelector
-                      id="bodyFontSize"
-                      label=""
-                      placeholder="例如：五号、10.5"
-                      value={bodyOptions.fontSize}
-                      onChange={(value) => setBodyOptions({...bodyOptions, fontSize: value})}
-                    />
-                  </div>
-                  <div className="col-span-2 flex space-x-4">
-                    <div className="flex items-center">
-                      <input
-                        id="bodyBold"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={bodyOptions.isBold}
-                        onChange={(e) => setBodyOptions({...bodyOptions, isBold: e.target.checked})}
-                      />
-                      <Label htmlFor="bodyBold" className="ml-2">粗体</Label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="bodyItalic"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={bodyOptions.isItalic}
-                        onChange={(e) => setBodyOptions({...bodyOptions, isItalic: e.target.checked})}
-                      />
-                      <Label htmlFor="bodyItalic" className="ml-2">斜体</Label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        id="bodyUnderline"
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                        checked={bodyOptions.isUnderline}
-                        onChange={(e) => setBodyOptions({...bodyOptions, isUnderline: e.target.checked})}
-                      />
-                      <Label htmlFor="bodyUnderline" className="ml-2">下划线</Label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button 
-                onClick={() => handleProcessDocuments()}
-                disabled={
-                  processing || 
-                  processedDocuments.length === 0 || 
-                  !processedDocuments.some(doc => doc.status === 'uploaded_to_server' || doc.status === 'completed')
-                }
-              >
-                应用选项并处理
-              </Button>
-            </CardFooter>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
-
-      {/* 不再需要全局操作页脚，移除 */}
     </main>
   );
-}
+} 
