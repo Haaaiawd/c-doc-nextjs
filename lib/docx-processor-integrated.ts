@@ -360,20 +360,23 @@ export default class DocxProcessor {
         result.bodyText = paragraphs.slice(startIndex).join('\n\n');
       }
       
-      // 提取图片信息
-      try {
-        // 再次检查docx对象是否有效，防止在提取样式后变为undefined
-        if (docx && typeof docx.parse === 'function') {
-          const images = await this.extractImages(docx);
-          if (images.length > 0) {
-            result.images = images;
-          }
-        } else {
-          console.warn('无法提取图片：docx对象无效');
-        }
-      } catch (imgError) {
-        console.warn('提取图片时出错:', imgError);
-      }      
+      // 提取图片信息 - 暂时禁用以解决稳定性问题
+      // 图片提取功能不是核心的文档样式处理功能，而且会导致不稳定
+      // try {
+      //   // 再次检查docx对象是否有效，防止在提取样式后变为undefined
+      //   if (docx && typeof docx.parse === 'function') {
+      //     const images = await this.extractImages(docx);
+      //     if (images.length > 0) {
+      //       result.images = images;
+      //     }
+      //   } else {
+      //     console.warn('无法提取图片：docx对象无效');
+      //   }
+      // } catch (imgError) {
+      //   console.warn('提取图片时出错:', imgError);
+      // }
+      
+      console.log('图片提取功能已禁用，专注于文档样式处理');
       
       // 样式去重：正文样式完全一致的只保留一个
       if (result.bodyStyles && result.bodyStyles.length > 1) {
@@ -891,37 +894,52 @@ export default class DocxProcessor {
     }[] = [];
     
     try {
+      // 增强docx对象验证
+      if (!docx || typeof docx !== 'object') {
+        console.warn('docx对象无效，跳过图片提取');
+        return images;
+      }
+      
+      // 检查parse方法是否存在且为函数
+      if (typeof docx.parse !== 'function') {
+        console.warn('docx.parse方法不存在或不是函数，跳过图片提取');
+        return images;
+      }
+      
       let currentParagraphIndex = 0;
       
-      // 确保docx对象存在且其parse方法可用
-      if (docx && typeof docx.parse === 'function') {
-        // 使用bind确保parse方法的this上下文正确
-        const parseFn = docx.parse.bind(docx);
-        await parseFn((node: DocxNode) => {
-          if (node.tag === 'w:p') {
-            currentParagraphIndex++;
-          }
-          
-          // 查找图片节点
-          if (node.tag === 'w:drawing' || node.tag === 'pic:pic') {
-            try {
-              // 提取图片信息
-              const imageInfo = this.extractImageInfo(node, currentParagraphIndex);
-              if (imageInfo) {
-                images.push(imageInfo);
-              }
-            } catch (error) {
-              console.warn('提取图片信息时出错:', error);
+      try {
+        // 使用更安全的方式调用parse方法
+        await docx.parse((node: DocxNode) => {
+          try {
+            if (node && typeof node === 'object' && node.tag === 'w:p') {
+              currentParagraphIndex++;
             }
+            
+            // 查找图片节点
+            if (node && typeof node === 'object' && 
+                (node.tag === 'w:drawing' || node.tag === 'pic:pic')) {
+              try {
+                // 提取图片信息
+                const imageInfo = this.extractImageInfo(node, currentParagraphIndex);
+                if (imageInfo) {
+                  images.push(imageInfo);
+                }
+              } catch (imageError) {
+                console.warn('提取单个图片信息时出错:', imageError);
+              }
+            }
+          } catch (nodeError) {
+            console.warn('处理节点时出错:', nodeError);
           }
           
           return true; // 继续遍历
         });
-      } else {
-        console.warn('docx对象无效或parse方法不可用');
+      } catch (parseError) {
+        console.warn('调用docx.parse时出错:', parseError);
       }
     } catch (error) {
-      console.warn('解析文档结构时出错:', error);
+      console.warn('图片提取过程中出错:', error);
     }
     
     return images;
