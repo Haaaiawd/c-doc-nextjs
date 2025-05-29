@@ -674,18 +674,20 @@ export default class DocxProcessor {
   }
   
   /**
-   * 提取 docx 文档中的样式信息
+   * 从 docx4js 解析对象中提取样式信息
+   * @param docx Docx解析对象
+   * @returns 包含段落样式信息的映射表
    */
   private async extractStyleInfo(docx: DocxDocument): Promise<Record<number, ParagraphInfo>> {
     const paragraphInfoMap: Record<number, ParagraphInfo> = {};
+    let paragraphIndex = 0;
     
     try {
-      // 遍历文档中的段落
-      let paragraphIndex = 0;
-      
       // 确保docx对象存在且其parse方法可用
       if (docx && typeof docx.parse === 'function') {
-        await docx.parse((node: DocxNode) => {
+        // 使用bind确保parse方法的this上下文正确
+        const parseFn = docx.parse.bind(docx);
+        await parseFn((node: DocxNode) => {
           // 检查是否是段落节点
           if (node.tag === 'w:p') {
             const textRuns: TextRunInfo[] = [];
@@ -841,6 +843,8 @@ export default class DocxProcessor {
           
           return true; // 继续遍历
         });
+      } else {
+        console.warn('docx对象无效或parse方法不可用');
       }
     } catch (error) {
       console.warn('提取样式信息时出错:', error);
@@ -887,52 +891,76 @@ export default class DocxProcessor {
     }[] = [];
     
     try {
-      let currentParagraphIndex = 0;      // 修复: 确保docx对象存在且其parse方法可用
+      let currentParagraphIndex = 0;
+      
+      // 确保docx对象存在且其parse方法可用
       if (docx && typeof docx.parse === 'function') {
-        try {
-          // 使用bind确保parse方法的this上下文正确
-          const parseFn = docx.parse.bind(docx);
-          await parseFn((node: DocxNode) => {
-            if (node.tag === 'w:p') {
-              currentParagraphIndex++;
-            }
+        // 使用bind确保parse方法的this上下文正确
+        const parseFn = docx.parse.bind(docx);
+        await parseFn((node: DocxNode) => {
+          if (node.tag === 'w:p') {
+            currentParagraphIndex++;
+          }
           
-            // 检查是否是图片节点
-            if (node.tag === 'w:drawing' || node.tag === 'w:pict') {
-              // 增加健壮性检查，确保node.children是有效的数组
-              if (!node.children || !Array.isArray(node.children)) {
-                return true; // 没有子节点，继续遍历
+          // 查找图片节点
+          if (node.tag === 'w:drawing' || node.tag === 'pic:pic') {
+            try {
+              // 提取图片信息
+              const imageInfo = this.extractImageInfo(node, currentParagraphIndex);
+              if (imageInfo) {
+                images.push(imageInfo);
               }
-              
-              // 找到图片数据
-              const imageNode = node.children.find((child: DocxNode) => 
-                child && (child.tag === 'w:binData' || child.tag === 'v:imagedata')
-              );
-              
-              if (imageNode && imageNode.val) {
-                const imageName = `image_${images.length + 1}`;
-                
-                // 提取图片数据
-                const imageData = {
-                  name: imageName,
-                  base64Data: `data:image/png;base64,${imageNode.val}`, // 假设是PNG格式
-                  paragraphIndex: currentParagraphIndex
-                };
-                
-                images.push(imageData);
-              }
+            } catch (error) {
+              console.warn('提取图片信息时出错:', error);
             }
-            
-            return true; // 继续遍历
-          });
-        } catch (parseError) {
-          console.warn('解析文档结构时出错:', parseError);
-        }
+          }
+          
+          return true; // 继续遍历
+        });
+      } else {
+        console.warn('docx对象无效或parse方法不可用');
       }
     } catch (error) {
-      console.warn('提取图片时出错:', error);
+      console.warn('解析文档结构时出错:', error);
     }
     
     return images;
+  }
+
+  /**
+   * 提取图片信息
+   * @param node 图片节点
+   * @param paragraphIndex 段落索引
+   * @returns 提取的图片信息
+   */
+  private extractImageInfo(node: DocxNode, paragraphIndex: number): {
+    name: string;
+    base64Data?: string;
+    paragraphIndex?: number;
+  } | undefined {
+    // 增加健壮性检查，确保node.children是有效的数组
+    if (!node.children || !Array.isArray(node.children)) {
+      return undefined; // 没有子节点，返回undefined
+    }
+    
+    // 找到图片数据
+    const imageNode = node.children.find((child: DocxNode) => 
+      child && (child.tag === 'w:binData' || child.tag === 'v:imagedata')
+    );
+    
+    if (imageNode && imageNode.val) {
+      const imageName = `image_${images.length + 1}`;
+      
+      // 提取图片数据
+      const imageData = {
+        name: imageName,
+        base64Data: `data:image/png;base64,${imageNode.val}`, // 假设是PNG格式
+        paragraphIndex: currentParagraphIndex
+      };
+      
+      return imageData;
+    }
+    
+    return undefined; // 没有找到图片数据，返回undefined
   }
 }

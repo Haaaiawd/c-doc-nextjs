@@ -14,10 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProcessedDocument, DocumentAnalysisData, DocumentTemplate } from "./types";
-import { FontUsageDisplay } from "@/components/font-usage-display";
 import { UploadProgress } from "@/components/upload-progress";
 import { SimpleTemplateSelector } from "@/components/template-selector";
-import { getFontUsage } from "./api-client/get-font-usage";
 import { generateUUID } from "@/lib/utils";
 import { getDefaultTemplate } from "@/lib/preset-templates";
 
@@ -54,13 +52,8 @@ export default function HomePage() {
     }, 0);
   };
   
-  // 简化的文档分析状态
+  // 使用导入的 DocumentAnalysisData 类型
   const [documentAnalysis, setDocumentAnalysis] = useState<DocumentAnalysisData | null>(null);
-  
-  // 字体分析相关的状态（保留用于预览）
-  const [currentFontAnalysisFileId, setCurrentFontAnalysisFileId] = useState<string | null>(null);
-  const [fontUsageData, setFontUsageData] = useState<Record<string, { count: number, samples: string[] }> | null>(null);
-  const [loadingFontUsage, setLoadingFontUsage] = useState<boolean>(false);
   
   // 当前选中文件的状态
   const [currentEditingFileId, setCurrentEditingFileId] = useState<string | null>(null);
@@ -353,33 +346,16 @@ export default function HomePage() {
 
       const result = await response.json();
       
-      if (result.success && result.data) {
-        setDocumentAnalysis(result.data);
+      if (result.success && result.analysis) {
+        setDocumentAnalysis(result.analysis);
       } else {
-        throw new Error(result.message || '分析失败');
+        throw new Error(result.error || '分析失败');
       }
     } catch (error) {
       console.error('Analysis error:', error);
       alert(`文档分析失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setIsAnalyzing(false);
-    }
-  };
-
-  // 保留字体分析功能
-  const handleAnalyzeFonts = async (fileId: string) => {
-    setLoadingFontUsage(true);
-    setCurrentFontAnalysisFileId(fileId);
-    
-    try {
-      const fontUsage = await getFontUsage(fileId);
-      setFontUsageData(fontUsage);
-    } catch (error) {
-      console.error('Font analysis error:', error);
-      alert(`字体分析失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      setFontUsageData(null);
-    } finally {
-      setLoadingFontUsage(false);
     }
   };
 
@@ -399,21 +375,13 @@ export default function HomePage() {
   // UI状态重置
   const resetUIState = (options: {
     resetEditingFile?: boolean,
-    resetFontAnalysis?: boolean,
     resetDocumentAnalysis?: boolean,
-    resetFontUsage?: boolean
   } = {}) => {
     if (options.resetEditingFile) {
       setCurrentEditingFileId(null);
     }
-    if (options.resetFontAnalysis) {
-      setCurrentFontAnalysisFileId(null);
-    }
     if (options.resetDocumentAnalysis) {
       setDocumentAnalysis(null);
-    }
-    if (options.resetFontUsage) {
-      setFontUsageData(null);
     }
   };
 
@@ -425,9 +393,7 @@ export default function HomePage() {
       setProcessedDocuments([]);
       resetUIState({
         resetEditingFile: true,
-        resetFontAnalysis: true,
         resetDocumentAnalysis: true,
-        resetFontUsage: true
       });
     }
   };
@@ -472,14 +438,7 @@ export default function HomePage() {
         resetDocumentAnalysis: true
       });
     }
-    
-    if (currentFontAnalysisFileId && !processedDocuments.some(doc => doc.id === currentFontAnalysisFileId)) {
-      resetUIState({
-        resetFontAnalysis: true,
-        resetFontUsage: true
-      });
-    }
-  }, [processedDocuments, currentEditingFileId, currentFontAnalysisFileId]);
+  }, [processedDocuments, currentEditingFileId]);
 
   return (
     <main className="container mx-auto p-4 md:p-8 lg:p-12">
@@ -566,16 +525,6 @@ export default function HomePage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* 字体分析结果展示 */}
-              {(currentFontAnalysisFileId || loadingFontUsage) && (
-                <div className="mb-4">
-                  <FontUsageDisplay 
-                    fontUsage={fontUsageData}
-                    loading={loadingFontUsage}
-                  />
-                </div>
-              )}
-              
               {/* 批量操作按钮 */}
               {processedDocuments.length > 0 && (
                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-md">
@@ -675,20 +624,6 @@ export default function HomePage() {
                           </Button>
                         )}
                         
-                        {/* 字体分析按钮 */}
-                        {(doc.status === 'uploaded_to_server' || doc.status === 'completed') && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => handleAnalyzeFonts(doc.id)}
-                            disabled={loadingFontUsage && currentFontAnalysisFileId === doc.id}
-                          >
-                            {loadingFontUsage && currentFontAnalysisFileId === doc.id 
-                              ? "分析中..." 
-                              : "字体分析"}
-                          </Button>
-                        )}
-                        
                         {/* 应用模板处理按钮 */}
                         {(doc.status === 'uploaded_to_server' || doc.status === 'completed') && (
                           <Button 
@@ -700,7 +635,7 @@ export default function HomePage() {
                             应用模板处理
                           </Button>
                         )}
-                        
+
                         {/* 下载按钮 */}
                         {doc.status === 'completed' && doc.processedFileUrl && (
                           <a 

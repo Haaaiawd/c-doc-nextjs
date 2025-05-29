@@ -10,10 +10,30 @@ export function FontUsageDisplay({ fontUsage, loading }: FontUsageProps) {
   const [sortedFonts, setSortedFonts] = useState<[string, { count: number; samples: string[] }][]>([]);
   
   useEffect(() => {
-    if (fontUsage) {
-      // 将字体使用情况按使用次数排序
-      const sorted = Object.entries(fontUsage).sort((a, b) => b[1].count - a[1].count);
-      setSortedFonts(sorted);
+    if (fontUsage && typeof fontUsage === 'object' && Object.keys(fontUsage).length > 0) {
+      try {
+        // 将字体使用情况按使用次数排序，添加错误处理
+        const entries = Object.entries(fontUsage);
+        const sorted = entries
+          .filter(([fontName, usage]) => {
+            // 过滤无效的条目
+            return fontName && 
+                   typeof fontName === 'string' && 
+                   usage && 
+                   typeof usage === 'object' && 
+                   typeof usage.count === 'number' &&
+                   Array.isArray(usage.samples);
+          })
+          .sort((a, b) => {
+            const countA = a[1]?.count || 0;
+            const countB = b[1]?.count || 0;
+            return countB - countA;
+          });
+        setSortedFonts(sorted);
+      } catch (error) {
+        console.error('处理字体使用数据时出错:', error);
+        setSortedFonts([]);
+      }
     } else {
       setSortedFonts([]);
     }
@@ -37,7 +57,7 @@ export function FontUsageDisplay({ fontUsage, loading }: FontUsageProps) {
     );
   }
   
-  if (!fontUsage || sortedFonts.length === 0) {
+  if (!fontUsage || !sortedFonts || sortedFonts.length === 0) {
     return (
       <Card className="w-full">
         <CardHeader>
@@ -59,29 +79,36 @@ export function FontUsageDisplay({ fontUsage, loading }: FontUsageProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {sortedFonts.map(([fontName, { count, samples }]) => (
-            <div key={fontName} className="border rounded-lg p-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">{fontName}</h3>
-                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                  出现 {count} 次
-                </span>
-              </div>
-              
-              {samples.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-sm text-gray-500 mb-1">样本文本:</p>
-                  <ul className="text-sm space-y-1">
-                    {samples.slice(0, 3).map((sample, index) => (
-                      <li key={index} className="bg-gray-50 p-2 rounded">
-                        {sample}
-                      </li>
-                    ))}
-                  </ul>
+          {sortedFonts.map(([fontName, { count, samples }]) => {
+            // 添加安全检查
+            const safeCount = typeof count === 'number' ? count : 0;
+            const safeSamples = Array.isArray(samples) ? samples : [];
+            const safeFontName = typeof fontName === 'string' ? fontName : '未知字体';
+            
+            return (
+              <div key={fontName} className="border rounded-lg p-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">{safeFontName}</h3>
+                  <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                    出现 {safeCount} 次
+                  </span>
                 </div>
-              )}
-            </div>
-          ))}
+                
+                {safeSamples.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500 mb-1">样本文本:</p>
+                    <ul className="text-sm space-y-1">
+                      {safeSamples.slice(0, 3).map((sample, index) => (
+                        <li key={index} className="bg-gray-50 p-2 rounded">
+                          {typeof sample === 'string' ? sample : '无效样本'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>

@@ -10,11 +10,12 @@ const PROCESSED_DIR = path.join(process.cwd(), 'tmp', 'processed');
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { fileName: string } }
-) {  const { params } = context;
+  context: { params: Promise<{ fileName: string }> }
+) {
   try {
-    // Next.js 15.3.2要求在使用动态路由参数前必须await
-    const fileName = await Promise.resolve(params.fileName);
+    // Next.js 15.3.2要求await params
+    const params = await context.params;
+    const fileName = params.fileName;
     
     // 安全检查：防止目录遍历攻击
     const normalizedFileName = path.normalize(fileName).replace(/^(\.\.(\/|\\|$))+/, '');

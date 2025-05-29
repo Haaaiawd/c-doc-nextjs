@@ -177,7 +177,7 @@ export class DeepFontDetector {
       basedOn = basedOnNode.getAttribute('w:val') || undefined;
     }
     
-    // 获取字体信息
+    // 获取字体信息 - 增强版
     const rPr = styleNode.getElementsByTagName('w:rPr')[0];
     const fonts = {
       eastAsia: undefined as string | undefined,
@@ -193,13 +193,57 @@ export class DeepFontDetector {
     let color: string | undefined = undefined;
     
     if (rPr) {
-      // 字体
+      // 字体 - 增强字体检测
       const rFonts = rPr.getElementsByTagName('w:rFonts')[0];
       if (rFonts) {
+        // 标准字体属性
         fonts.eastAsia = rFonts.getAttribute('w:eastAsia') || undefined;
         fonts.ascii = rFonts.getAttribute('w:ascii') || undefined;
         fonts.hAnsi = rFonts.getAttribute('w:hAnsi') || undefined;
         fonts.cs = rFonts.getAttribute('w:cs') || undefined;
+        
+        // 检查主题字体
+        const eastAsiaTheme = rFonts.getAttribute('w:eastAsiaTheme');
+        const asciiTheme = rFonts.getAttribute('w:asciiTheme');
+        const hAnsiTheme = rFonts.getAttribute('w:hAnsiTheme');
+        const csTheme = rFonts.getAttribute('w:csTheme');
+        
+        // 如果没有直接字体名称，尝试从主题获取
+        if (!fonts.eastAsia && eastAsiaTheme) {
+          fonts.eastAsia = this.getThemeFontName(eastAsiaTheme);
+        }
+        if (!fonts.ascii && asciiTheme) {
+          fonts.ascii = this.getThemeFontName(asciiTheme);
+        }
+        if (!fonts.hAnsi && hAnsiTheme) {
+          fonts.hAnsi = this.getThemeFontName(hAnsiTheme);
+        }
+        if (!fonts.cs && csTheme) {
+          fonts.cs = this.getThemeFontName(csTheme);
+        }
+        
+        // 遍历所有属性，寻找可能的字体相关属性
+        for (let i = 0; i < rFonts.attributes.length; i++) {
+          const attr = rFonts.attributes[i];
+          const attrName = attr.name.toLowerCase();
+          const attrValue = attr.value;
+          
+          // 检查是否包含字体相关的属性
+          if (attrName.includes('font') || attrName.includes('typeface')) {
+            console.log(`发现字体相关属性: ${attr.name} = ${attrValue}`);
+            
+            // 根据属性名分配字体
+            if (attrName.includes('east') || attrName.includes('asia') || attrName.includes('chinese')) {
+              fonts.eastAsia = fonts.eastAsia || attrValue;
+            } else if (attrName.includes('hansi') || attrName.includes('han')) {
+              fonts.hAnsi = fonts.hAnsi || attrValue;
+            } else if (attrName.includes('ascii') || attrName.includes('latin')) {
+              fonts.ascii = fonts.ascii || attrValue;
+            } else if (attrName.includes('complex') || attrName.includes('cs')) {
+              fonts.cs = fonts.cs || attrValue;
+            }
+          }
+        }
       }
       
       // 字号
@@ -248,6 +292,24 @@ export class DeepFontDetector {
       color,
       basedOn
     };
+  }
+
+  /**
+   * 根据主题字体名称获取实际字体名称
+   */
+  private getThemeFontName(themeName: string): string {
+    const themeMapping: Record<string, string> = {
+      'majorEastAsia': '微软雅黑',
+      'minorEastAsia': '宋体',
+      'majorAscii': 'Calibri',
+      'minorAscii': 'Calibri',
+      'majorHAnsi': 'Calibri',
+      'minorHAnsi': 'Calibri',
+      'majorBidi': 'Times New Roman',
+      'minorBidi': 'Times New Roman'
+    };
+    
+    return themeMapping[themeName] || themeName;
   }
     /**
    * 解析文档内容，提取段落及其字体信息

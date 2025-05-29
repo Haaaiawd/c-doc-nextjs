@@ -267,6 +267,9 @@ export default function CreateTemplatePage() {
       savedTemplates.push(newTemplate);
       localStorage.setItem('customTemplates', JSON.stringify(savedTemplates));
       
+      // 触发自定义事件通知模板选择器更新
+      window.dispatchEvent(new CustomEvent('customTemplateAdded'));
+      
       alert("模板保存成功！");
       
       // 返回主页面

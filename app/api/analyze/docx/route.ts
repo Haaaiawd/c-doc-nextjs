@@ -9,8 +9,8 @@ const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
 // 分析上传的 .docx 文件
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const fileId = formData.get('fileId') as string;
+    const requestData = await request.json();
+    const { fileId } = requestData;
 
     if (!fileId) {
       return NextResponse.json({ success: false, error: '缺少文件ID' }, { status: 400 });
