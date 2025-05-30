@@ -1,4 +1,4 @@
-import { DocumentTemplate, TemplateStyle } from '@/app/types';
+import { DocumentTemplate } from '@/app/types';
 
 /**
  * 预设的文档模板

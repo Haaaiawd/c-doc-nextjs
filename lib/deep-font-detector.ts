@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as JSZip from 'jszip';
 import { DOMParser } from 'xmldom';
-import { FontInfo } from './docx-processor-integrated';
+import { FontInfo } from '@/types/document-processing';
 
 export interface StyleInfo {
   id: string;

@@ -44,7 +44,7 @@ const StyleConfigSection = React.memo(({
   }, [style, setStyle]);
 
   const handleAlignmentChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setStyle({...style, alignment: e.target.value as any});
+    setStyle({...style, alignment: e.target.value as 'left' | 'center' | 'right' | 'justify'});
   }, [style, setStyle]);
 
   const handleBoldChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

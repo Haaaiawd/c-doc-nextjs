@@ -57,7 +57,7 @@ export function TemplateSelector({ selectedTemplate, onTemplateSelect, className
       <div>
         <h3 className="text-lg font-medium mb-2">选择文档模板</h3>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          选择预设模板快速配置文档样式，或点击"创建新模板"进行自定义。
+          选择预设模板快速配置文档样式，或点击&ldquo;创建新模板&rdquo;进行自定义。
         </p>
       </div>
       
