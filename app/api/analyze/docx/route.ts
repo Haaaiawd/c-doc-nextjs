@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import path from 'path';
 import DocxProcessor from '@/lib/docx-processor-integrated';
-import * as path from 'path';
 import { promises as fs } from 'fs';
 
 // 确保上传目录存在

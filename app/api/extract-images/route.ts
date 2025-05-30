@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`开始提取图片: ${file.name}, 大小: ${file.size} bytes`);
+    console.log(`🔍 开始图片提取: ${file.name}, 大小: ${file.size} bytes`);
 
     // 创建临时文件
     const buffer = await file.arrayBuffer();
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     tempFilePath = path.join(tempDir, `${Date.now()}-${file.name}`);
     await fs.writeFile(tempFilePath, Buffer.from(buffer));
 
-    // 提取图片
+    // 使用增强版图片提取器
     const imageExtractor = new ImageExtractor();
     const result = await imageExtractor.extractImages(tempFilePath);
 
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
     // 计算总文件大小
     const totalSize = result.images.reduce((sum, img) => sum + img.size, 0);
 
+    // 返回增强的结果
     return NextResponse.json({
       success: true,
       data: {
@@ -77,19 +78,30 @@ export async function POST(request: NextRequest) {
           size: img.size,
           paragraphIndex: img.paragraphIndex,
           relationshipId: img.relationshipId,
-          base64Data: img.base64Data // 包含完整的base64数据
+          runIndex: img.runIndex,
+          xmlPosition: img.xmlPosition,
+          base64Data: img.base64Data
         })),
+        // 新增：详细的关系信息
+        relationshipDetails: result.relationshipDetails,
+        // 新增：段落级图片映射
+        paragraphImages: result.paragraphImages,
+        // 新增：统计信息
+        statistics: result.statistics,
+        // 兼容性：保留原有的关系映射
         relationships: Object.fromEntries(result.imageRelationships),
         metadata: {
           extractedAt: new Date().toISOString(),
           fileName: file.name,
-          fileSize: file.size
+          fileSize: file.size,
+          enhancedExtraction: true, // 标识为增强版提取
+          version: '2.0' // 标识API版本
         }
       }
     });
 
   } catch (error) {
-    console.error('提取图片时出错:', error);
+    console.error('📛 提取图片时出错:', error);
     
     // 清理临时文件
     if (tempFilePath) {
@@ -100,14 +112,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(
-      { 
-        success: false,
-        error: '图片提取失败', 
-        details: error instanceof Error ? error.message : String(error)
-      },
-      { status: 500 }
-    );
+    // 提供更详细的错误信息
+    let errorMessage = '图片提取失败';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    return NextResponse.json({
+      success: false,
+      error: errorMessage,
+      details: error instanceof Error ? error.stack : undefined
+    }, { status: 500 });
   }
 }
 

@@ -28,7 +28,6 @@ export function FileUploadSection({
     onDrop,
     accept: {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/msword': ['.doc'],
     },
     multiple: true,
   });
@@ -40,6 +39,19 @@ export function FileUploadSection({
         <CardDescription>
           选择要处理的 .docx 文件
         </CardDescription>
+        
+        <div className="text-sm text-blue-600 dark:text-blue-400 p-3 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200">
+          💡 <strong>注意：</strong>如果您有 .DOC 文件，请先到{' '}
+          <a 
+            href="https://www.freeconvert.com/doc-to-docx" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="underline hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+          >
+            FreeConvert
+          </a>
+          {' '}转换为 .DOCX 格式后再上传
+        </div>
       </CardHeader>
       <CardContent>
         <div
@@ -73,10 +85,7 @@ export function FileUploadSection({
               </p>
             )}
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              支持 .DOC 和 .DOCX 文件
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-              ⚠️ .doc文件转换时可能丢失图片和复杂格式
+              仅支持 .DOCX 文件
             </p>
           </div>
         </div>

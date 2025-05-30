@@ -5,11 +5,13 @@ import { FileUploadSection } from "@/components/FileUploadSection";
 import { FileListSection } from "@/components/FileListSection";
 import { TemplateConfigSection } from "@/components/TemplateConfigSection";
 import { DocumentPreviewSection } from "@/components/DocumentPreviewSection";
+import PageCleanupHandler from "@/components/PageCleanupHandler";
 import { useFileManagement } from "@/hooks/useFileManagement";
 import { useImageExtraction } from "@/hooks/useImageExtraction";
 import { useDocumentProcessing } from "@/hooks/useDocumentProcessing";
 import { useDocumentAnalysis } from "@/hooks/useDocumentAnalysis";
 import { useTemplateManagement } from "@/hooks/useTemplateManagement";
+import { useToast } from "@/components/ui/toast";
 
 export default function HomePage() {
   // 使用自定义hooks
@@ -18,6 +20,9 @@ export default function HomePage() {
   const documentProcessing = useDocumentProcessing();
   const documentAnalysis = useDocumentAnalysis();
   const templateManagement = useTemplateManagement();
+  
+  // 使用Toast系统
+  const { addToast } = useToast();
 
   // 监听文件列表变化，确保UI状态一致
   useEffect(() => {
@@ -51,13 +56,13 @@ export default function HomePage() {
     );
   };
 
-  // 图片提取相关处理
+  // 图片提取相关处理 - 现在使用Toast
   const handleExtractImages = async (fileId: string) => {
-    await imageExtraction.extractImages(fileId, fileManagement.processedDocuments);
+    await imageExtraction.extractImages(fileId, fileManagement.processedDocuments, addToast);
   };
 
   const handleDownloadAllImages = (fileId: string) => {
-    imageExtraction.downloadAllImages(fileId);
+    imageExtraction.downloadAllImages(fileId, addToast);
   };
 
   const handleClearImageResults = (fileId: string) => {
@@ -66,6 +71,9 @@ export default function HomePage() {
 
   return (
     <main className="container mx-auto p-4 md:p-8 lg:p-12">
+      {/* 页面清理处理组件 */}
+      <PageCleanupHandler />
+      
       <header className="mb-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
           C-Doc Next - 文档批量处理工具 (精简版)

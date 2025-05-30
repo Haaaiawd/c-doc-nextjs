@@ -13,6 +13,7 @@ import {
   DocxAnalysisResult,
   ExtractedImage 
 } from '@/types/document-processing';
+import { trackSessionFile } from '../startup';
 
 export class DocumentModifier {
   private documentAnalyzer: DocumentAnalyzer;
@@ -63,6 +64,9 @@ export class DocumentModifier {
       // 5. 保存文档
       const buffer = await Packer.toBuffer(doc);
       await fs.writeFile(outputPath, buffer);
+      
+      // 跟踪输出文件用于会话清理
+      trackSessionFile(outputPath);
       
       console.log(`文档处理完成，保留了${extractedImages.length}张图片`);
       return outputPath;
@@ -189,31 +193,137 @@ export class DocumentModifier {
     bodyOptions?: FontModificationOptions
   ) {
     if (analysis.paragraphs && analysis.paragraphs.length > 0) {
-      const startIndex = (analysis.author?.exists ? 2 : 1);
+      // 确定正文开始索引
+      let startIndex = 0;
+      if (analysis.title?.exists) startIndex++;
+      if (analysis.author?.exists) startIndex++;
       
+      console.log(`正文开始索引: ${startIndex}, 总段落数: ${analysis.paragraphs.length}`);
+      console.log(`提取的图片数量: ${extractedImages.length}`);
+      
+      // 创建图片位置映射
+      const imagesByParagraph = new Map<number, ExtractedImage[]>();
+      extractedImages.forEach(img => {
+        if (img.paragraphIndex !== undefined) {
+          // 调整图片段落索引，考虑到标题和作者的偏移
+          const adjustedIndex = img.paragraphIndex + startIndex;
+          
+          if (!imagesByParagraph.has(adjustedIndex)) {
+            imagesByParagraph.set(adjustedIndex, []);
+          }
+          imagesByParagraph.get(adjustedIndex)!.push(img);
+          console.log(`📍 图片 ${img.name} 映射到调整后段落 ${adjustedIndex} (原始: ${img.paragraphIndex})`);
+        }
+      });
+      
+      // 收集无法精确匹配的图片
+      const unassignedImages = extractedImages.filter(img => img.paragraphIndex === undefined);
+      if (unassignedImages.length > 0) {
+        console.log(`⚠️ 发现${unassignedImages.length}张无法精确定位的图片，将使用智能分配策略`);
+      }
+      
+      // 遍历段落并添加内容和图片
       for (let i = startIndex; i < analysis.paragraphs.length; i++) {
         const para = analysis.paragraphs[i];
         
-        // 使用原始段落索引匹配图片
-        const paragraphImages = extractedImages.filter(img => img.paragraphIndex === i);
-        
-        console.log(`段落${i}: "${para.text.substring(0, 50)}...", 找到${paragraphImages.length}张图片`);
-        
-        // 添加段落文本
-        const bodyParagraph = new Paragraph({
-          text: para.text,
-          style: 'Body',
-          alignment: this.getAlignmentType(bodyOptions?.targetAlignment || 'left')
-        });
-        
+        // 创建段落
+        const bodyParagraph = this.createParagraphWithOriginalFormat(para, bodyOptions);
         paragraphs.push(bodyParagraph);
         
-        // 添加段落后的图片
-        this.addParagraphImages(paragraphs, paragraphImages);
+        // 检查是否有图片应该在这个段落后插入
+        const paragraphImages = imagesByParagraph.get(i) || [];
+        
+        console.log(`段落${i}: "${para.text.substring(0, 50)}...", 匹配图片: ${paragraphImages.length}张`);
+        
+        // 添加匹配到的图片
+        if (paragraphImages.length > 0) {
+          this.addParagraphImages(paragraphs, paragraphImages);
+        }
+        
+        // 智能分配无法精确定位的图片
+        this.tryAssignUnassignedImages(paragraphs, unassignedImages, i, analysis.paragraphs.length, startIndex);
       }
       
-      // 添加未匹配的图片到文档末尾
-      this.addUnmatchedImages(paragraphs, extractedImages, analysis);
+      // 添加剩余未分配的图片到文档末尾
+      this.addRemainingImages(paragraphs, unassignedImages);
+    }
+  }
+
+  /**
+   * 尝试智能分配无法精确定位的图片
+   */
+  private tryAssignUnassignedImages(
+    paragraphs: Paragraph[],
+    unassignedImages: ExtractedImage[],
+    currentParagraphIndex: number,
+    totalParagraphs: number,
+    startIndex: number
+  ) {
+    const relativeParagraphIndex = currentParagraphIndex - startIndex;
+    const totalBodyParagraphs = totalParagraphs - startIndex;
+    
+    // 策略：在文档的特定位置插入图片
+    const shouldInsertImage = (imageIndex: number) => {
+      const targetPosition = (imageIndex + 1) / (unassignedImages.length + 1);
+      const currentPosition = relativeParagraphIndex / totalBodyParagraphs;
+      
+      // 允许一定的容差范围
+      return Math.abs(currentPosition - targetPosition) < (1 / (totalBodyParagraphs + 1));
+    };
+    
+    // 检查是否应该在当前位置插入图片
+    for (let i = unassignedImages.length - 1; i >= 0; i--) {
+      if (shouldInsertImage(i)) {
+        const imageToInsert = unassignedImages.splice(i, 1)[0];
+        console.log(`🎯 智能插入图片 ${imageToInsert.name} 在段落 ${currentParagraphIndex} 后`);
+        this.addParagraphImages(paragraphs, [imageToInsert]);
+      }
+    }
+  }
+
+  /**
+   * 添加剩余的图片到文档末尾
+   */
+  private addRemainingImages(paragraphs: Paragraph[], remainingImages: ExtractedImage[]) {
+    if (remainingImages.length > 0) {
+      console.log(`📎 添加${remainingImages.length}张剩余图片到文档末尾`);
+      this.addParagraphImages(paragraphs, remainingImages);
+      remainingImages.length = 0; // 清空数组
+    }
+  }
+
+  /**
+   * 创建保留原始格式的段落
+   */
+  private createParagraphWithOriginalFormat(
+    para: { text: string; styles?: Array<{ name?: string; size?: number; isBold?: boolean; isItalic?: boolean; isUnderline?: boolean; color?: string; alignment?: string }> },
+    bodyOptions?: FontModificationOptions
+  ): Paragraph {
+    // 如果有原始样式信息，尽量保留
+    if (para.styles && para.styles.length > 0) {
+      const firstStyle = para.styles[0];
+      
+      // 确定段落对齐方式
+      let alignment = this.getAlignmentType('left'); // 默认左对齐
+      if (firstStyle.alignment) {
+        alignment = this.getAlignmentType(firstStyle.alignment);
+      }
+      if (bodyOptions?.targetAlignment) {
+        alignment = this.getAlignmentType(bodyOptions.targetAlignment);
+      }
+      
+      return new Paragraph({
+        text: para.text,
+        style: 'Body',
+        alignment: alignment
+      });
+    } else {
+      // 没有样式信息时使用默认格式
+      return new Paragraph({
+        text: para.text,
+        style: 'Body',
+        alignment: this.getAlignmentType(bodyOptions?.targetAlignment || 'left')
+      });
     }
   }
 
@@ -230,6 +340,14 @@ export class DocumentModifier {
         
         console.log(`图片buffer大小: ${imageBuffer.length} bytes`);
         
+        // 根据mimeType确定图片类型
+        let imageType: 'png' | 'jpg' | 'gif' = 'png'; // 默认为png
+        if (img.mimeType.includes('jpeg') || img.mimeType.includes('jpg')) {
+          imageType = 'jpg';
+        } else if (img.mimeType.includes('gif')) {
+          imageType = 'gif';
+        } // PNG和其他格式使用默认的png
+        
         const maxWidth = 600;
         const imageWidth = Math.min(maxWidth, 400);
         const imageHeight = Math.round(imageWidth * 0.75);
@@ -242,14 +360,14 @@ export class DocumentModifier {
                 width: imageWidth,
                 height: imageHeight,
               },
-              type: 'png',
+              type: imageType, // 使用正确的图片类型
             }),
           ],
           alignment: AlignmentType.CENTER,
         });
         
         paragraphs.push(imageParagraph);
-        console.log(`成功添加图片到新文档: ${img.name}`);
+        console.log(`成功添加图片到新文档: ${img.name}, 类型: ${imageType}`);
       } catch (imgAddError) {
         console.warn(`添加图片${img.name}时出错:`, imgAddError);
         
@@ -259,57 +377,6 @@ export class DocumentModifier {
           style: 'Body'
         });
         paragraphs.push(placeholderParagraph);
-      }
-    }
-  }
-
-  /**
-   * 添加未匹配的图片到文档末尾
-   */
-  private addUnmatchedImages(
-    paragraphs: Paragraph[],
-    extractedImages: ExtractedImage[],
-    analysis: DocxAnalysisResult
-  ) {
-    const startIndex = (analysis.author?.exists ? 2 : 1);
-    
-    const unmatchedImages = extractedImages.filter(img => 
-      img.paragraphIndex === undefined || 
-      img.paragraphIndex < startIndex || 
-      img.paragraphIndex >= analysis.paragraphs.length
-    );
-    
-    if (unmatchedImages.length > 0) {
-      console.log(`发现${unmatchedImages.length}张未匹配的图片，将添加到文档末尾`);
-      
-      for (const img of unmatchedImages) {
-        try {
-          const base64Data = img.base64Data.replace(/^data:image\/[^;]+;base64,/, '');
-          const imageBuffer = Buffer.from(base64Data, 'base64');
-          
-          const maxWidth = 600;
-          const imageWidth = Math.min(maxWidth, 400);
-          const imageHeight = Math.round(imageWidth * 0.75);
-          
-          const imageParagraph = new Paragraph({
-            children: [
-              new ImageRun({
-                data: imageBuffer,
-                transformation: {
-                  width: imageWidth,
-                  height: imageHeight,
-                },
-                type: 'png',
-              }),
-            ],
-            alignment: AlignmentType.CENTER,
-          });
-          
-          paragraphs.push(imageParagraph);
-          console.log(`添加未匹配图片到文档末尾: ${img.name}`);
-        } catch (imgAddError) {
-          console.warn(`添加未匹配图片${img.name}时出错:`, imgAddError);
-        }
       }
     }
   }
@@ -383,12 +450,33 @@ export class DocumentModifier {
               spacing: { before: 120, after: 120 },
               indent: { firstLine: 480 }
             }
+          },
+          {
+            id: 'Normal',
+            name: 'Normal',
+            basedOn: 'Normal',
+            run: {
+              font: '宋体',
+              size: 24,
+            },
+            paragraph: {
+              spacing: { line: 360 }
+            }
           }
         ]
       },
       sections: [
         {
-          properties: {},
+          properties: {
+            page: {
+              margin: {
+                top: 1134,
+                right: 1134,
+                bottom: 1134,
+                left: 1134,
+              },
+            },
+          },
           children: paragraphs
         }
       ]

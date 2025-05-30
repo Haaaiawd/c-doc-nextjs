@@ -4,6 +4,7 @@ import { mkdir } from 'fs/promises';
 import path from 'path';
 import { ProcessedDocument, DocumentStatus } from '@/app/types';
 import { generateUUID } from '@/lib/utils';
+import { trackSessionFile } from '@/lib/startup';
 
 // 确保上传目录存在
 const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
@@ -56,9 +57,12 @@ export async function POST(request: NextRequest) {
           
           // 将文件内容转换为 ArrayBuffer
           const fileBuffer = await fileEntry.arrayBuffer();
-            // 将文件保存到临时目录
+          // 将文件保存到临时目录
           // 注意：在 Vercel 部署时，这种方法不适用，需要使用云存储
           await writeFile(filePath, Buffer.from(fileBuffer));
+          
+          // 跟踪会话文件以便后续清理
+          trackSessionFile(filePath);
           
           // 更新文件信息对象，添加保存路径（仅用于本地开发）
           const updatedFileInfo = {

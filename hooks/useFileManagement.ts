@@ -118,33 +118,6 @@ export function useFileManagement(): UseFileManagementReturn {
     }
   }, [processedDocuments]);
 
-  // 检查文件是否为doc格式
-  const isDocFile = (file: FileWithPath) => {
-    return file.name.toLowerCase().endsWith('.doc') && !file.name.toLowerCase().endsWith('.docx');
-  };
-
-  // 转换doc文件为docx
-  const convertDocToDocx = async (file: FileWithPath): Promise<File> => {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('/api/convert-doc', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Doc转换失败: ${response.statusText}`);
-    }
-
-    const convertedBuffer = await response.arrayBuffer();
-    const convertedFileName = file.name.replace(/\.doc$/i, '.docx');
-    
-    return new File([convertedBuffer], convertedFileName, {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    });
-  };
-
   // 文件上传处理
   const handleUpload = useCallback(async () => {
     if (acceptedFilesList.length === 0) {
@@ -187,50 +160,37 @@ export function useFileManagement(): UseFileManagementReturn {
         )
       );
 
-      // 处理文件转换（如果有doc文件）
-      const processedFiles: FileWithPath[] = [];
+      // 处理需要转换的doc文件和直接上传的docx文件
+      const processedFiles: File[] = [];
       
       for (const file of currentBatchFiles) {
         const docId = processedDocuments.find(d => d.originalFileName === file.name)?.id;
-        
+          
         try {
-          if (isDocFile(file)) {
-            // 更新状态为转换中
-            if (docId) {
-              setProcessedDocuments(prevDocs => 
-                prevDocs.map(doc => 
-                  doc.id === docId 
-                    ? { ...doc, status: 'converting_doc_to_docx' as const }
-                    : doc
-                )
-              );
-            }
+          if (file.name.toLowerCase().endsWith('.doc')) {
+            // 提示用户使用外部转换工具
+            alert(`文件 "${file.name}" 是 .doc 格式，请先使用 FreeConvert (https://www.freeconvert.com/zh) 转换为 .docx 格式后再上传。`);
             
-            console.log(`转换doc文件: ${file.name}`);
-            const convertedFile = await convertDocToDocx(file);
-            processedFiles.push(convertedFile as FileWithPath);
-            
-            // 更新文档信息为转换后的docx
+            // 更新状态为失败
             if (docId) {
               setProcessedDocuments(prevDocs => 
                 prevDocs.map(doc => 
                   doc.id === docId 
                     ? { 
                         ...doc, 
-                        originalFileName: convertedFile.name,
-                        fileType: convertedFile.type,
-                        fileSize: convertedFile.size,
-                        status: 'uploading' as const 
+                        status: 'failed' as const, 
+                        errorMessage: '不支持 .doc 格式，请转换为 .docx'
                       }
                     : doc
                 )
               );
             }
+            continue;
           } else {
             processedFiles.push(file);
           }
         } catch (conversionError) {
-          console.error(`转换文件${file.name}时出错:`, conversionError);
+          console.error(`处理文件${file.name}时出错:`, conversionError);
           
           // 更新状态为失败
           if (docId) {
@@ -240,7 +200,7 @@ export function useFileManagement(): UseFileManagementReturn {
                   ? { 
                       ...doc, 
                       status: 'failed' as const, 
-                      errorMessage: `Doc转换失败: ${conversionError instanceof Error ? conversionError.message : '未知错误'}`
+                      errorMessage: `文件处理失败: ${conversionError instanceof Error ? conversionError.message : '未知错误'}`
                     }
                   : doc
               )
@@ -251,7 +211,7 @@ export function useFileManagement(): UseFileManagementReturn {
       }
 
       if (processedFiles.length === 0) {
-        alert("没有可上传的文件（所有doc文件转换失败）");
+        alert("没有可上传的 .docx 文件！");
         return;
       }
 

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import DocxProcessor from '@/lib/docx-processor-integrated';
 import * as path from 'path';
 import { promises as fs } from 'fs';
-import { FontModificationOptions } from '@/lib/docx-processor-integrated';
+import { FontModificationOptions } from '@/types/document-processing';
 import { convertChineseFontSize } from '@/lib/font-utils';
+import { trackSessionFile } from '@/lib/startup';
 
 // 确保上传目录和处理结果目录存在
 const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
@@ -261,6 +262,9 @@ export async function POST(request: NextRequest) {
         bodyModOptions, 
         authorModOptions
       );
+      
+      // 跟踪生成的文件以便后续清理
+      trackSessionFile(outputPath);
       
       // 返回成功响应及处理后文件信息
       return NextResponse.json({

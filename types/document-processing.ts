@@ -93,20 +93,50 @@ export interface FontModificationOptions {
   }[];
 }
 
-// 图片提取结果
+// 图片提取结果 - 增强版
 export interface ExtractedImage {
   name: string;
   mimeType: string;
   size: number;
   paragraphIndex?: number;
   relationshipId?: string;
+  runIndex?: number; // 在段落中的run索引
+  xmlPosition?: number; // 在XML中的位置
   base64Data: string;
 }
 
-// 图片提取状态
+// 图片关系信息
+export interface ImageRelationshipInfo {
+  relationshipId: string;
+  imageName: string;
+  target: string;
+  type: string;
+}
+
+// 段落图片信息
+export interface ParagraphImageInfo {
+  paragraphIndex: number;
+  images: {
+    relationshipId: string;
+    runIndex: number;
+    xmlPosition: number;
+  }[];
+  textContent: string; // 段落的文本内容（用于调试）
+}
+
+// 图片提取状态 - 增强版
 export interface ImageExtractionState {
   isExtracting: boolean;
   images: ExtractedImage[];
   totalCount: number;
   totalSize: number;
+  relationshipDetails?: ImageRelationshipInfo[]; // 详细的关系信息
+  paragraphImages?: ParagraphImageInfo[]; // 段落级图片映射
+  statistics?: {
+    totalParagraphs: number;
+    paragraphsWithImages: number;
+    totalImageReferences: number;
+    matchedImages: number;
+    unlocatedImages: number;
+  };
 } 

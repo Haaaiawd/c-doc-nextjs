@@ -116,6 +116,7 @@ c-doc-nextjs/
 ## 🔒 注意事项
 
 - 仅支持 `.docx` 格式文件
+- 如果您有 `.doc` 文件，请先到 [FreeConvert](https://www.freeconvert.com/zh) 转换为 `.docx` 格式后再上传
 - 上传的文件会临时存储在服务器上
 - 处理后的文件会在一定时间后自动清理
 - 建议定期备份重要的自定义模板

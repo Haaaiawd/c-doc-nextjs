@@ -2,7 +2,6 @@
  * 文档分析器 - 专注于文档内容分析和字体检测
  */
 import mammoth from 'mammoth';
-import * as fs from 'fs/promises';
 import docx4js, { DocxDocument, DocxNode } from 'docx4js';
 import { DeepFontDetector } from '../deep-font-detector';
 import { ImageExtractor } from '../image-extractor';
@@ -10,8 +9,7 @@ import {
   DocxAnalysisResult, 
   FontInfo, 
   TextRunInfo, 
-  ParagraphInfo,
-  DeepFontAnalysisResult 
+  ParagraphInfo
 } from '@/types/document-processing';
 
 export class DocumentAnalyzer {
@@ -134,7 +132,7 @@ export class DocumentAnalyzer {
         }
       }
       
-      // 处理标题、作者和段落信息
+      // 处理文档结构（标题、作者、段落）
       this.processDocumentStructure(result, paragraphs, paragraphInfoMap);
       
       // 提取图片信息
@@ -205,32 +203,40 @@ export class DocumentAnalyzer {
     paragraphInfoMap: Record<number, ParagraphInfo>
   ) {
     if (paragraphs.length > 0) {
-      // 处理标题
-      result.title = {
-        text: paragraphs[0],
-        exists: true,
-        styles: paragraphInfoMap[0] ? paragraphInfoMap[0].textRuns.map(run => ({
-          name: run.name,
-          size: run.size,
-          isBold: run.isBold,
-          isItalic: run.isItalic,
-          isUnderline: run.isUnderline,
-          color: run.color,
-          alignment: run.alignment,
-          originalStyleKey: run.originalStyleKey
-        })) : [{
-          name: '默认字体',
-          size: 16,
-          isBold: true,
-          isItalic: false,
-          isUnderline: false,
-          alignment: 'center',
-          originalStyleKey: 'default-title'
-        }]
-      };
+      // 智能识别标题 - 必须是第一段，并且满足特定条件
+      const isTitle = this.identifyTitle(paragraphs, paragraphInfoMap);
       
-      // 尝试识别作者信息
-      if (paragraphs.length > 1 && paragraphs[1].length < 30) {
+      if (isTitle) {
+        // 处理标题
+        result.title = {
+          text: paragraphs[0],
+          exists: true,
+          styles: paragraphInfoMap[0] ? paragraphInfoMap[0].textRuns.map(run => ({
+            name: run.name,
+            size: run.size,
+            isBold: run.isBold,
+            isItalic: run.isItalic,
+            isUnderline: run.isUnderline,
+            color: run.color,
+            alignment: run.alignment,
+            originalStyleKey: run.originalStyleKey
+          })) : [{
+            name: '默认字体',
+            size: 16,
+            isBold: true,
+            isItalic: false,
+            isUnderline: false,
+            alignment: 'center',
+            originalStyleKey: 'default-title'
+          }]
+        };
+      } else {
+        // 第一段不是标题，不设置title
+        result.title = undefined;
+      }
+      
+      // 尝试识别作者信息（只有在有标题的情况下才检查第二段作为作者）
+      if (isTitle && paragraphs.length > 1 && paragraphs[1].length < 30) {
         const authorPattern = /[\（\(](.+)[\)\）]|作者[：:]\s*(.+)/;
         const authorMatch = paragraphs[1].match(authorPattern);
         
@@ -264,9 +270,91 @@ export class DocumentAnalyzer {
       this.processParagraphs(result, paragraphs, paragraphInfoMap);
       
       // 构建正文
-      const startIndex = result.author?.exists ? 2 : 1;
+      const startIndex = result.author?.exists ? 2 : (result.title?.exists ? 1 : 0);
       result.bodyText = paragraphs.slice(startIndex).join('\n\n');
     }
+  }
+
+  /**
+   * 智能识别标题
+   * 必要条件：在第一段
+   * 充分条件：字体大小和第二段不同，或为居中排列
+   */
+  private identifyTitle(
+    paragraphs: string[], 
+    paragraphInfoMap: Record<number, ParagraphInfo>
+  ): boolean {
+    if (paragraphs.length === 0) return false;
+    
+    // 获取第一段的样式信息
+    const firstParagraph = paragraphInfoMap[0];
+    if (!firstParagraph || !firstParagraph.textRuns || firstParagraph.textRuns.length === 0) {
+      // 如果没有样式信息，通过深度分析检查
+      return this.checkTitleByDeepAnalysis(paragraphs);
+    }
+
+    const firstParagraphStyle = firstParagraph.textRuns[0];
+    
+    // 检查是否居中排列
+    const isCenter = firstParagraph.alignment === 'center' || 
+                    firstParagraphStyle.alignment === 'center';
+    
+    if (isCenter) {
+      console.log('第一段识别为标题：居中排列');
+      return true;
+    }
+    
+    // 如果有第二段，比较字体大小
+    if (paragraphs.length > 1) {
+      const secondParagraph = paragraphInfoMap[1];
+      if (secondParagraph && secondParagraph.textRuns && secondParagraph.textRuns.length > 0) {
+        const secondParagraphStyle = secondParagraph.textRuns[0];
+        
+        const firstSize = firstParagraphStyle.size || 12;
+        const secondSize = secondParagraphStyle.size || 12;
+        
+        // 如果第一段字体比第二段大，认为是标题
+        if (firstSize > secondSize) {
+          console.log(`第一段识别为标题：字体大小 ${firstSize} > ${secondSize}`);
+          return true;
+        }
+        
+        // 如果第一段加粗而第二段不加粗，也可能是标题
+        if (firstParagraphStyle.isBold && !secondParagraphStyle.isBold) {
+          console.log('第一段识别为标题：第一段加粗，第二段不加粗');
+          return true;
+        }
+      }
+    }
+    
+    // 检查第一段是否明显像标题（短且简洁）
+    const firstParagraphText = paragraphs[0].trim();
+    if (firstParagraphText.length < 50 && !firstParagraphText.includes('。') && 
+        !firstParagraphText.includes('.') && paragraphs.length > 1) {
+      console.log('第一段识别为标题：短且简洁，类似标题格式');
+      return true;
+    }
+    
+    console.log('第一段不符合标题特征，作为正文处理');
+    return false;
+  }
+
+  /**
+   * 通过深度分析检查标题
+   */
+  private checkTitleByDeepAnalysis(paragraphs: string[]): boolean {
+    if (paragraphs.length === 0) return false;
+    
+    const firstParagraph = paragraphs[0].trim();
+    
+    // 如果第一段很短且不包含句号，可能是标题
+    if (firstParagraph.length < 30 && !firstParagraph.includes('。') && 
+        !firstParagraph.includes('.') && paragraphs.length > 1) {
+      console.log('深度分析：第一段识别为标题（短且无句号）');
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -414,17 +502,18 @@ export class DocumentAnalyzer {
                   paragraphText += text;
                   
                   // 提取样式信息
-                  const styleObj: Record<string, any> = run.style ? { ...run.style } : {};
+                  const styleObj = run.style ? { ...run.style } : {};
                   
                   const textRunInfo: TextRunInfo = {
                     text,
-                    name: styleObj.font || '默认字体',
-                    size: styleObj.size ? parseFloat(styleObj.size) : undefined,
-                    isBold: !!styleObj.bold,
-                    isItalic: !!styleObj.italic,
-                    isUnderline: !!styleObj.underline,
-                    color: styleObj.color,
-                    alignment: this.mapAlignment(alignment),
+                    name: (typeof styleObj.font === 'string' ? styleObj.font : undefined) || '默认字体',
+                    size: typeof styleObj.size === 'string' ? parseFloat(styleObj.size) : 
+                          typeof styleObj.size === 'number' ? styleObj.size : undefined,
+                    isBold: Boolean(styleObj.bold),
+                    isItalic: Boolean(styleObj.italic),
+                    isUnderline: Boolean(styleObj.underline),
+                    color: typeof styleObj.color === 'string' ? styleObj.color : undefined,
+                    alignment: this.mapAlignment(typeof alignment === 'string' ? alignment : undefined),
                     originalStyleKey: `p-${paragraphIndex}-r-${textRuns.length}`
                   };
                   
