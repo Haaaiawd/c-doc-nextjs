@@ -42,7 +42,8 @@ export default function HomePage() {
       fileManagement.processedDocuments,
       templateManagement.selectedTemplate,
       templateManagement.fileNameTemplate,
-      fileManagement.setProcessedDocuments
+      fileManagement.setProcessedDocuments,
+      addToast
     );
   };
 
@@ -52,7 +53,8 @@ export default function HomePage() {
       fileManagement.processedDocuments,
       templateManagement.selectedTemplate,
       templateManagement.fileNameTemplate,
-      fileManagement.setProcessedDocuments
+      fileManagement.setProcessedDocuments,
+      addToast
     );
   };
 
@@ -68,6 +70,12 @@ export default function HomePage() {
   const handleClearImageResults = (fileId: string) => {
     imageExtraction.clearImageExtractionResults(fileId);
   };
+
+  // 包装其他需要Toast的函数
+  const handleUpload = () => fileManagement.handleUpload(addToast);
+  const handleDownloadAllProcessedFiles = () => fileManagement.downloadAllProcessedFiles(addToast);
+  const handleClearAllFiles = () => fileManagement.clearAllFiles(addToast);
+  const handleAnalyzeDocument = (fileId: string) => documentAnalysis.analyzeDocument(fileId, addToast);
 
   return (
     <main className="container mx-auto p-4 md:p-8 lg:p-12">
@@ -91,7 +99,7 @@ export default function HomePage() {
             acceptedFilesList={fileManagement.acceptedFilesList}
             processing={fileManagement.processing || documentProcessing.processing}
             onDrop={fileManagement.onDrop}
-            onUpload={fileManagement.handleUpload}
+            onUpload={handleUpload}
           />
 
           {/* Section 3: File List & Results */}
@@ -102,13 +110,13 @@ export default function HomePage() {
             isAnalyzing={documentAnalysis.isAnalyzing}
             processing={fileManagement.processing || documentProcessing.processing}
             imageExtractionState={imageExtraction.imageExtractionState}
-            onAnalyzeDocument={documentAnalysis.analyzeDocument}
+            onAnalyzeDocument={handleAnalyzeDocument}
             onProcessDocument={handleProcessDocument}
             onExtractImages={handleExtractImages}
             onRemoveFile={fileManagement.removeFile}
             onApplySettingsToAllFiles={handleApplySettingsToAllFiles}
-            onDownloadAllProcessedFiles={fileManagement.downloadAllProcessedFiles}
-            onClearAllFiles={fileManagement.clearAllFiles}
+            onDownloadAllProcessedFiles={handleDownloadAllProcessedFiles}
+            onClearAllFiles={handleClearAllFiles}
             onDownloadAllImages={handleDownloadAllImages}
             onClearImageResults={handleClearImageResults}
           />

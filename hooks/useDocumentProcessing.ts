@@ -4,6 +4,13 @@
 import { useState, useCallback } from 'react';
 import { ProcessedDocument, DocumentTemplate } from '@/app/types';
 
+interface ToastOptions {
+  type?: 'default' | 'success' | 'warning' | 'error';
+  title?: string;
+  description?: string;
+  duration?: number;
+}
+
 interface UseDocumentProcessingReturn {
   processing: boolean;
   setProcessing: React.Dispatch<React.SetStateAction<boolean>>;
@@ -12,13 +19,15 @@ interface UseDocumentProcessingReturn {
     processedDocuments?: ProcessedDocument[],
     selectedTemplate?: DocumentTemplate,
     fileNameTemplate?: string,
-    setProcessedDocuments?: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>
+    setProcessedDocuments?: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>,
+    showToast?: (options: ToastOptions) => void
   ) => Promise<void>;
   applySettingsToAllFiles: (
     processedDocuments: ProcessedDocument[],
     selectedTemplate: DocumentTemplate,
     fileNameTemplate: string,
-    setProcessedDocuments: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>
+    setProcessedDocuments: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>,
+    showToast?: (options: ToastOptions) => void
   ) => Promise<void>;
 }
 
@@ -31,10 +40,15 @@ export function useDocumentProcessing(): UseDocumentProcessingReturn {
     processedDocuments: ProcessedDocument[] = [],
     selectedTemplate?: DocumentTemplate,
     fileNameTemplate: string = '{title}',
-    setProcessedDocuments?: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>
+    setProcessedDocuments?: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>,
+    showToast?: (options: ToastOptions) => void
   ) => {
     if (!selectedTemplate) {
-      alert("请先选择文档模板！");
+      showToast?.({
+        type: 'warning',
+        title: '请先选择模板',
+        description: '请先选择文档模板！'
+      });
       return;
     }
 
@@ -50,7 +64,11 @@ export function useDocumentProcessing(): UseDocumentProcessingReturn {
         );
 
     if (filesToProcess.length === 0) {
-      alert("没有可处理的文件！");
+      showToast?.({
+        type: 'warning',
+        title: '没有可处理的文件',
+        description: '没有可处理的文件！'
+      });
       return;
     }
 
@@ -111,10 +129,18 @@ export function useDocumentProcessing(): UseDocumentProcessingReturn {
       }
 
       const successCount = filesToProcess.length;
-      alert(`处理完成！成功处理 ${successCount} 个文件。`);
+      showToast?.({
+        type: 'success',
+        title: '处理完成',
+        description: `处理完成！成功处理 ${successCount} 个文件。`
+      });
     } catch (error) {
       console.error('Processing error:', error);
-      alert(`处理失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      showToast?.({
+        type: 'error',
+        title: '处理失败',
+        description: `处理失败: ${error instanceof Error ? error.message : '未知错误'}`
+      });
     } finally {
       setProcessing(false);
     }
@@ -125,23 +151,33 @@ export function useDocumentProcessing(): UseDocumentProcessingReturn {
     processedDocuments: ProcessedDocument[],
     selectedTemplate: DocumentTemplate,
     fileNameTemplate: string,
-    setProcessedDocuments: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>
+    setProcessedDocuments: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>,
+    showToast?: (options: ToastOptions) => void
   ) => {
     if (!selectedTemplate) {
-      alert("请先选择文档模板！");
+      showToast?.({
+        type: 'warning',
+        title: '请先选择模板',
+        description: '请先选择文档模板！'
+      });
       return;
     }
     
-    const confirmed = confirm(`确定要使用"${selectedTemplate.name}"模板处理所有文件吗？`);
-    if (confirmed) {
-      await handleProcessDocuments(
-        undefined, 
-        processedDocuments, 
-        selectedTemplate, 
-        fileNameTemplate, 
-        setProcessedDocuments
-      );
-    }
+    // 直接执行批量处理，不需要确认弹窗
+    showToast?.({
+      type: 'default',
+      title: '开始批量处理',
+      description: `正在使用"${selectedTemplate.name}"模板处理所有文件...`
+    });
+    
+    await handleProcessDocuments(
+      undefined, 
+      processedDocuments, 
+      selectedTemplate, 
+      fileNameTemplate, 
+      setProcessedDocuments,
+      showToast
+    );
   }, [handleProcessDocuments]);
 
   return {

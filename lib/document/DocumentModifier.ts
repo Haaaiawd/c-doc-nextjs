@@ -201,18 +201,18 @@ export class DocumentModifier {
       console.log(`正文开始索引: ${startIndex}, 总段落数: ${analysis.paragraphs.length}`);
       console.log(`提取的图片数量: ${extractedImages.length}`);
       
-      // 创建图片位置映射
+      // 创建图片位置映射 - 修复：图片段落索引不需要调整，直接使用原始索引
       const imagesByParagraph = new Map<number, ExtractedImage[]>();
       extractedImages.forEach(img => {
         if (img.paragraphIndex !== undefined) {
-          // 调整图片段落索引，考虑到标题和作者的偏移
-          const adjustedIndex = img.paragraphIndex + startIndex;
+          // 直接使用原始段落索引，不进行偏移调整
+          const paragraphIndex = img.paragraphIndex;
           
-          if (!imagesByParagraph.has(adjustedIndex)) {
-            imagesByParagraph.set(adjustedIndex, []);
+          if (!imagesByParagraph.has(paragraphIndex)) {
+            imagesByParagraph.set(paragraphIndex, []);
           }
-          imagesByParagraph.get(adjustedIndex)!.push(img);
-          console.log(`📍 图片 ${img.name} 映射到调整后段落 ${adjustedIndex} (原始: ${img.paragraphIndex})`);
+          imagesByParagraph.get(paragraphIndex)!.push(img);
+          console.log(`📍 图片 ${img.name} 映射到段落 ${paragraphIndex}`);
         }
       });
       
@@ -222,8 +222,14 @@ export class DocumentModifier {
         console.log(`⚠️ 发现${unassignedImages.length}张无法精确定位的图片，将使用智能分配策略`);
       }
       
+      // 确定实际需要处理的段落范围
+      const totalParagraphs = analysis.paragraphs.length;
+      const maxParagraphIndex = Math.max(totalParagraphs - 1, ...Array.from(imagesByParagraph.keys()));
+      
+      console.log(`处理段落范围: ${startIndex} 到 ${Math.min(maxParagraphIndex, totalParagraphs - 1)}, 图片映射段落: [${Array.from(imagesByParagraph.keys()).join(', ')}]`);
+      
       // 遍历段落并添加内容和图片
-      for (let i = startIndex; i < analysis.paragraphs.length; i++) {
+      for (let i = startIndex; i < totalParagraphs; i++) {
         const para = analysis.paragraphs[i];
         
         // 创建段落
@@ -237,11 +243,13 @@ export class DocumentModifier {
         
         // 添加匹配到的图片
         if (paragraphImages.length > 0) {
+          console.log(`正在添加段落${i}的${paragraphImages.length}张图片...`);
           this.addParagraphImages(paragraphs, paragraphImages);
+          console.log(`段落${i}的图片添加完成`);
         }
         
         // 智能分配无法精确定位的图片
-        this.tryAssignUnassignedImages(paragraphs, unassignedImages, i, analysis.paragraphs.length, startIndex);
+        this.tryAssignUnassignedImages(paragraphs, unassignedImages, i, totalParagraphs, startIndex);
       }
       
       // 添加剩余未分配的图片到文档末尾

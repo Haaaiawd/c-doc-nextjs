@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { FontSizeSelector } from "@/components/ui/font-size-selector";
 import { DocumentTemplate, TemplateStyle } from "@/app/types";
 import { generateUUID } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast";
 
 // 字体样式配置组件 - 使用React.memo防止不必要的重新渲染
 const StyleConfigSection = React.memo(({ 
@@ -196,6 +197,9 @@ export default function CreateTemplatePage() {
   const [templateName, setTemplateName] = useState<string>("");
   const [templateDescription, setTemplateDescription] = useState<string>("");
   
+  // 使用Toast系统
+  const { addToast } = useToast();
+  
   // 标题样式配置
   const [titleStyle, setTitleStyle] = useState<TemplateStyle>({
     fontName: "微软雅黑",
@@ -238,7 +242,11 @@ export default function CreateTemplatePage() {
   // 保存模板
   const saveTemplate = async () => {
     if (!templateName.trim()) {
-      alert("请输入模板名称！");
+      addToast({
+        type: 'warning',
+        title: '请输入模板名称',
+        description: '请输入模板名称！'
+      });
       return;
     }
 
@@ -270,13 +278,23 @@ export default function CreateTemplatePage() {
       // 触发自定义事件通知模板选择器更新
       window.dispatchEvent(new CustomEvent('customTemplateAdded'));
       
-      alert("模板保存成功！");
+      addToast({
+        type: 'success',
+        title: '模板保存成功',
+        description: '模板保存成功！正在返回主页...'
+      });
       
-      // 返回主页面
-      window.location.href = '/';
+      // 延迟返回主页面，让用户看到成功消息
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1000);
     } catch (error) {
       console.error("保存模板失败:", error);
-      alert("保存模板失败，请重试。");
+      addToast({
+        type: 'error',
+        title: '保存失败',
+        description: '保存模板失败，请重试。'
+      });
     }
   };
 

@@ -1,32 +1,22 @@
 /**
- * 应用启动初始化脚本
+ * 应用启动初始化脚本 - 简化版
  */
 import { fileCleanup } from './cleanup';
-import { startScheduledCleanup } from './scheduled-cleanup';
 
 let isInitialized = false;
 
 /**
- * 初始化应用程序
+ * 初始化应用程序 - 简化版（不启动定时清理）
  */
 export function initializeApp() {
   if (isInitialized) {
     return;
   }
 
-  console.log('🚀 正在初始化C-Doc Next.js应用...');
+  console.log('🚀 正在初始化C-Doc Next.js应用（简化模式）...');
 
-  // 启动新的定时清理服务
-  try {
-    const success = startScheduledCleanup();
-    if (success) {
-      console.log('✅ 定时清理服务已启动');
-    } else {
-      console.log('ℹ️ 定时清理服务未启动（可能被配置禁用）');
-    }
-  } catch (error) {
-    console.warn('⚠️ 启动定时清理服务时出错:', error);
-  }
+  // 不再启动定时清理服务，避免Edge Runtime兼容性问题
+  console.log('ℹ️ 定时清理已禁用（避免Edge Runtime冲突）');
 
   isInitialized = true;
   console.log('🎉 应用初始化完成');

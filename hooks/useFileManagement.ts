@@ -7,6 +7,13 @@ import { ProcessedDocument } from '@/app/types';
 import { generateUUID } from '@/lib/utils';
 import path from 'path';
 
+interface ToastOptions {
+  type?: 'default' | 'success' | 'warning' | 'error';
+  title?: string;
+  description?: string;
+  duration?: number;
+}
+
 interface UseFileManagementReturn {
   acceptedFilesList: FileWithPath[];
   processedDocuments: ProcessedDocument[];
@@ -18,9 +25,9 @@ interface UseFileManagementReturn {
   setUploadProgress: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   onDrop: (acceptedFiles: FileWithPath[]) => void;
   removeFile: (fileId: string) => void;
-  clearAllFiles: () => void;
-  downloadAllProcessedFiles: () => void;
-  handleUpload: () => Promise<void>;
+  clearAllFiles: (showToast?: (options: ToastOptions) => void) => void;
+  downloadAllProcessedFiles: (showToast?: (options: ToastOptions) => void) => void;
+  handleUpload: (showToast?: (options: ToastOptions) => void) => Promise<void>;
 }
 
 export function useFileManagement(): UseFileManagementReturn {
@@ -78,22 +85,28 @@ export function useFileManagement(): UseFileManagementReturn {
   }, [processedDocuments]);
 
   // 清空所有文件
-  const clearAllFiles = useCallback(() => {
-    const confirmed = confirm("确定要清空所有文件吗？此操作不可撤销。");
-    if (confirmed) {
-      setAcceptedFilesList([]);
-      setProcessedDocuments([]);
-    }
+  const clearAllFiles = useCallback((showToast?: (options: ToastOptions) => void) => {
+    setAcceptedFilesList([]);
+    setProcessedDocuments([]);
+    showToast?.({
+      type: 'success',
+      title: '清空完成',
+      description: '所有文件已清空'
+    });
   }, []);
 
   // 下载所有处理后的文件
-  const downloadAllProcessedFiles = useCallback(() => {
+  const downloadAllProcessedFiles = useCallback((showToast?: (options: ToastOptions) => void) => {
     const completedFiles = processedDocuments.filter(doc => 
       doc.status === 'completed' && doc.processedFileUrl
     );
     
     if (completedFiles.length === 0) {
-      alert("没有可下载的处理后文件！");
+      showToast?.({
+        type: 'warning',
+        title: '没有可下载的文件',
+        description: '没有可下载的处理后文件！'
+      });
       return;
     }
     
@@ -108,7 +121,12 @@ export function useFileManagement(): UseFileManagementReturn {
     }).filter(Boolean);
     
     if (downloadLinks.length > 0) {
-      alert(`即将下载 ${downloadLinks.length} 个文件，请确保允许浏览器下载多个文件。`);
+      showToast?.({
+        type: 'success',
+        title: '开始下载',
+        description: `即将下载 ${downloadLinks.length} 个文件，请确保允许浏览器下载多个文件。`,
+        duration: 5000
+      });
       
       downloadLinks.forEach(link => {
         document.body.appendChild(link!);
@@ -119,9 +137,13 @@ export function useFileManagement(): UseFileManagementReturn {
   }, [processedDocuments]);
 
   // 文件上传处理
-  const handleUpload = useCallback(async () => {
+  const handleUpload = useCallback(async (showToast?: (options: ToastOptions) => void) => {
     if (acceptedFilesList.length === 0) {
-      alert("请先选择文件！");
+      showToast?.({
+        type: 'warning',
+        title: '请先选择文件',
+        description: '请先选择文件！'
+      });
       return;
     }
 
@@ -142,7 +164,11 @@ export function useFileManagement(): UseFileManagementReturn {
       });
 
       if (currentBatchFiles.length === 0) {
-        alert("没有新文件需要上传！");
+        showToast?.({
+          type: 'warning',
+          title: '没有新文件',
+          description: '没有新文件需要上传！'
+        });
         return;
       }
 
@@ -169,7 +195,12 @@ export function useFileManagement(): UseFileManagementReturn {
         try {
           if (file.name.toLowerCase().endsWith('.doc')) {
             // 提示用户使用外部转换工具
-            alert(`文件 "${file.name}" 是 .doc 格式，请先使用 FreeConvert (https://www.freeconvert.com/zh) 转换为 .docx 格式后再上传。`);
+            showToast?.({
+              type: 'warning',
+              title: '不支持.doc格式',
+              description: `文件 "${file.name}" 是 .doc 格式，请先使用 FreeConvert 转换为 .docx 格式后再上传。`,
+              duration: 8000
+            });
             
             // 更新状态为失败
             if (docId) {
@@ -211,7 +242,11 @@ export function useFileManagement(): UseFileManagementReturn {
       }
 
       if (processedFiles.length === 0) {
-        alert("没有可上传的 .docx 文件！");
+        showToast?.({
+          type: 'warning',
+          title: '没有可上传的文件',
+          description: '没有可上传的 .docx 文件！'
+        });
         return;
       }
 
@@ -262,13 +297,21 @@ export function useFileManagement(): UseFileManagementReturn {
           })
         );
 
-        alert(`成功上传 ${result.files.length} 个文件！`);
+        showToast?.({
+          type: 'success',
+          title: '上传成功',
+          description: `成功上传 ${result.files.length} 个文件！`
+        });
       } else {
         throw new Error(result.message || result.error || '上传失败');
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert(`上传失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      showToast?.({
+        type: 'error',
+        title: '上传失败',
+        description: `上传失败: ${error instanceof Error ? error.message : '未知错误'}`
+      });
       
       // 恢复失败文件的状态
       const currentBatchIds = acceptedFilesList.map(file => {
