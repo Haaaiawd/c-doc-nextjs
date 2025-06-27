@@ -18,6 +18,7 @@ interface UseFileManagementReturn {
   acceptedFilesList: FileWithPath[];
   processedDocuments: ProcessedDocument[];
   processing: boolean;
+  isBatchDownloading: boolean;
   uploadProgress: Record<string, number>;
   setAcceptedFilesList: React.Dispatch<React.SetStateAction<FileWithPath[]>>;
   setProcessedDocuments: React.Dispatch<React.SetStateAction<ProcessedDocument[]>>;
@@ -35,6 +36,7 @@ export function useFileManagement(): UseFileManagementReturn {
   const [processedDocuments, setProcessedDocuments] = useState<ProcessedDocument[]>([]);
   const [processing, setProcessing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
 
   // 文件拖拽处理
   const onDrop = useCallback((acceptedFiles: FileWithPath[]) => {
@@ -95,44 +97,78 @@ export function useFileManagement(): UseFileManagementReturn {
     });
   }, []);
 
-  // 下载所有处理后的文件
-  const downloadAllProcessedFiles = useCallback((showToast?: (options: ToastOptions) => void) => {
+  // 下载所有处理后的文件 - 更新为批量下载
+  const downloadAllProcessedFiles = useCallback(async (showToast?: (options: ToastOptions) => void) => {
     const completedFiles = processedDocuments.filter(doc => 
-      doc.status === 'completed' && doc.processedFileUrl
+      doc.status === 'completed' && doc.processedFileUrl && doc.processedFileName
     );
     
     if (completedFiles.length === 0) {
       showToast?.({
         type: 'warning',
         title: '没有可下载的文件',
-        description: '没有可下载的处理后文件！'
+        description: '没有可供批量下载的处理后文件！'
       });
       return;
     }
     
-    const downloadLinks = completedFiles.map(file => {
-      if (!file.processedFileUrl) return null;
-      
-      const link = document.createElement('a');
-      link.href = file.processedFileUrl;
-      link.download = file.processedFileName || file.originalFileName || 'downloaded-file.docx';
-      link.style.display = 'none';
-      return link;
-    }).filter(Boolean);
-    
-    if (downloadLinks.length > 0) {
+    setIsBatchDownloading(true);
+    showToast?.({
+      type: 'default',
+      title: '开始打包下载...',
+      description: `正在准备 ${completedFiles.length} 个文件，请稍候。`
+    });
+
+    try {
+      const fileInfos = completedFiles.map(file => ({
+        id: file.id,
+        processedFileName: file.processedFileName,
+      }));
+
+      const response = await fetch('/api/files/download-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileInfos }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '下载失败，无法解析错误响应' }));
+        throw new Error(errorData.details || errorData.error || '下载请求失败');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      // 从 content-disposition 头获取文件名
+      const contentDisposition = response.headers.get('content-disposition');
+      let downloadFileName = `processed_documents_${Date.now()}.zip`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?(.+)"?/);
+        if (match && match[1]) {
+          downloadFileName = match[1];
+        }
+      }
+      a.download = downloadFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
       showToast?.({
         type: 'success',
-        title: '开始下载',
-        description: `即将下载 ${downloadLinks.length} 个文件，请确保允许浏览器下载多个文件。`,
-        duration: 5000
+        title: '打包成功',
+        description: `${completedFiles.length} 个文件已打包成 zip 文件下载。`,
       });
-      
-      downloadLinks.forEach(link => {
-        document.body.appendChild(link!);
-        link!.click();
-        document.body.removeChild(link!);
+
+    } catch (error) {
+      showToast?.({
+        type: 'error',
+        title: '打包下载失败',
+        description: error instanceof Error ? error.message : '发生未知错误',
       });
+    } finally {
+      setIsBatchDownloading(false);
     }
   }, [processedDocuments]);
 
@@ -346,6 +382,7 @@ export function useFileManagement(): UseFileManagementReturn {
     acceptedFilesList,
     processedDocuments,
     processing,
+    isBatchDownloading,
     uploadProgress,
     setAcceptedFilesList,
     setProcessedDocuments,

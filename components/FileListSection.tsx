@@ -1,6 +1,9 @@
 /**
  * 文件列表区域组件
  */
+'use client';
+
+import React from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +16,7 @@ import { ProcessedDocument } from '@/app/types';
 import { UploadProgress } from "@/components/upload-progress";
 import { ImageExtractionResults } from './ImageExtractionResults';
 import { ImageExtractionState } from '@/types/document-processing';
+import { Cpu, Download } from 'lucide-react';
 
 interface FileListSectionProps {
   processedDocuments: ProcessedDocument[];
@@ -20,10 +24,13 @@ interface FileListSectionProps {
   currentEditingFileId: string | null;
   isAnalyzing: boolean;
   processing: boolean;
+  isBatchExtracting: boolean;
+  isBatchDownloading: boolean;
   imageExtractionState: Record<string, ImageExtractionState>;
   onAnalyzeDocument: (fileId: string) => Promise<void>;
   onProcessDocument: (fileId: string) => Promise<void>;
   onExtractImages: (fileId: string) => Promise<void>;
+  onBatchExtractImages: () => Promise<void>;
   onRemoveFile: (fileId: string) => void;
   onApplySettingsToAllFiles: () => Promise<void>;
   onDownloadAllProcessedFiles: () => void;
@@ -38,10 +45,13 @@ export function FileListSection({
   currentEditingFileId,
   isAnalyzing,
   processing,
+  isBatchExtracting,
+  isBatchDownloading,
   imageExtractionState,
   onAnalyzeDocument,
   onProcessDocument,
   onExtractImages,
+  onBatchExtractImages,
   onRemoveFile,
   onApplySettingsToAllFiles,
   onDownloadAllProcessedFiles,
@@ -49,13 +59,33 @@ export function FileListSection({
   onDownloadAllImages,
   onClearImageResults
 }: FileListSectionProps) {
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>3. 文件列表与结果</CardTitle>
-        <CardDescription>
-          查看已上传文件、处理状态和下载结果。
-        </CardDescription>
+        <div className="flex justify-between items-center">
+          <div>
+            <CardTitle>3. 文件列表与结果</CardTitle>
+            <CardDescription>
+              查看已上传文件、处理状态和下载结果。
+            </CardDescription>
+          </div>
+          {processedDocuments.length > 0 && (
+            <Button
+              onClick={onBatchExtractImages}
+              disabled={isBatchExtracting || processing}
+              variant="outline"
+              size="sm"
+            >
+              {isBatchExtracting ? (
+                <Cpu className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              {isBatchExtracting ? '正在提取...' : '一键提取所有图片'}
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         {/* 批量操作按钮 */}
@@ -78,8 +108,9 @@ export function FileListSection({
                   size="sm" 
                   variant="outline" 
                   onClick={onDownloadAllProcessedFiles}
+                  disabled={isBatchDownloading}
                 >
-                  下载所有处理后的文件
+                  {isBatchDownloading ? '打包中...' : '下载所有处理后的文件'}
                 </Button>
               )}
               <Button 

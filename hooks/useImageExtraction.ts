@@ -9,14 +9,17 @@ import path from 'path';
 
 interface UseImageExtractionReturn {
   imageExtractionState: Record<string, ImageExtractionState>;
+  isBatchExtracting: boolean;
   setImageExtractionState: React.Dispatch<React.SetStateAction<Record<string, ImageExtractionState>>>;
   extractImages: (fileId: string, processedDocuments: ProcessedDocument[], showToast?: (toast: any) => void) => Promise<void>;
+  batchExtractImages: (processedDocuments: ProcessedDocument[], showToast?: (toast: any) => void) => Promise<void>;
   clearImageExtractionResults: (fileId: string) => void;
   downloadAllImages: (fileId: string, showToast?: (toast: any) => void) => void;
 }
 
 export function useImageExtraction(): UseImageExtractionReturn {
   const [imageExtractionState, setImageExtractionState] = useState<Record<string, ImageExtractionState>>({});
+  const [isBatchExtracting, setIsBatchExtracting] = useState(false);
 
   // 图片提取功能 - 增强版
   const extractImages = useCallback(async (fileId: string, processedDocuments: ProcessedDocument[], showToast?: (toast: any) => void) => {
@@ -153,6 +156,89 @@ export function useImageExtraction(): UseImageExtractionReturn {
     }
   }, []);
 
+  // 新增：批量提取所有文档中的图片
+  const batchExtractImages = useCallback(async (processedDocuments: ProcessedDocument[], showToast?: (toast: any) => void) => {
+    if (processedDocuments.length === 0) {
+      if (showToast) {
+        showToast({
+          title: "没有文件",
+          description: "文件列表为空，无法提取图片。",
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
+    setIsBatchExtracting(true);
+    if (showToast) {
+      showToast({
+        title: '正在开始批量提取...',
+        description: `将处理 ${processedDocuments.length} 个文件。`,
+        variant: 'default',
+      });
+    }
+
+    try {
+      const filesToProcess = processedDocuments.map(doc => ({
+        id: doc.id,
+        originalFileName: doc.originalFileName
+      }));
+
+      const response = await fetch('/api/extract-images-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: filesToProcess }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: '提取失败，无法解析错误响应' }));
+        throw new Error(errorData.details || errorData.error || '提取请求失败');
+      }
+      
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const result = await response.json();
+        if (showToast) {
+          showToast({
+            title: '操作完成',
+            description: result.message || '未找到可提取的图片。',
+            variant: 'default',
+          });
+        }
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `extracted_images_${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      if (showToast) {
+        showToast({
+          title: '提取成功',
+          description: '所有图片已打包成 zip 文件下载。',
+          variant: 'success',
+        });
+      }
+
+    } catch (error) {
+      if (showToast) {
+        showToast({
+          title: '批量提取失败',
+          description: error instanceof Error ? error.message : '发生未知错误',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsBatchExtracting(false);
+    }
+  }, []);
+
   // 清除图片提取结果
   const clearImageExtractionResults = useCallback((fileId: string) => {
     setImageExtractionState(prevState => {
@@ -247,8 +333,10 @@ export function useImageExtraction(): UseImageExtractionReturn {
 
   return {
     imageExtractionState,
+    isBatchExtracting,
     setImageExtractionState,
     extractImages,
+    batchExtractImages,
     clearImageExtractionResults,
     downloadAllImages
   };

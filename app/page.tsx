@@ -63,6 +63,10 @@ export default function HomePage() {
     await imageExtraction.extractImages(fileId, fileManagement.processedDocuments, addToast);
   };
 
+  const handleBatchExtractImages = async () => {
+    await imageExtraction.batchExtractImages(fileManagement.processedDocuments, addToast);
+  };
+
   const handleDownloadAllImages = (fileId: string) => {
     imageExtraction.downloadAllImages(fileId, addToast);
   };
@@ -109,10 +113,13 @@ export default function HomePage() {
             currentEditingFileId={documentAnalysis.currentEditingFileId}
             isAnalyzing={documentAnalysis.isAnalyzing}
             processing={fileManagement.processing || documentProcessing.processing}
+            isBatchExtracting={imageExtraction.isBatchExtracting}
+            isBatchDownloading={fileManagement.isBatchDownloading}
             imageExtractionState={imageExtraction.imageExtractionState}
             onAnalyzeDocument={handleAnalyzeDocument}
             onProcessDocument={handleProcessDocument}
             onExtractImages={handleExtractImages}
+            onBatchExtractImages={handleBatchExtractImages}
             onRemoveFile={fileManagement.removeFile}
             onApplySettingsToAllFiles={handleApplySettingsToAllFiles}
             onDownloadAllProcessedFiles={handleDownloadAllProcessedFiles}
