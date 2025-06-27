@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import JSZip from 'jszip';
-import * as path from 'path';
-import * as fs from 'fs/promises';
-import { trackSessionFile } from '@/lib/startup';
-
-const PROCESSED_DIR = path.join(process.cwd(), 'tmp', 'processed');
+import { put } from '@vercel/blob';
 
 export async function POST(request: NextRequest) {
   try {
-    const { fileInfos } = await request.json(); // Expecting { id, processedFileName }
+    const { fileInfos } = await request.json(); // Expecting { url, fileName }
 
     if (!fileInfos || !Array.isArray(fileInfos) || fileInfos.length === 0) {
       return NextResponse.json({ error: '请提供一个包含文件信息的数组' }, { status: 400 });
@@ -18,20 +14,22 @@ export async function POST(request: NextRequest) {
     let filesAdded = 0;
 
     for (const fileInfo of fileInfos) {
-      const { processedFileName } = fileInfo;
-      if (!processedFileName) {
+      const { url, fileName } = fileInfo;
+      if (!url || !fileName) {
         console.warn(`文件信息不完整，已跳过: ${JSON.stringify(fileInfo)}`);
         continue;
       }
-      const filePath = path.join(PROCESSED_DIR, processedFileName);
 
       try {
-        const fileBuffer = await fs.readFile(filePath);
-        // Use the user-facing processedFileName for the name inside the zip.
-        zip.file(processedFileName, fileBuffer);
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`无法从Blob下载文件: ${url}`);
+        }
+        const fileBuffer = await response.arrayBuffer();
+        zip.file(fileName, fileBuffer);
         filesAdded++;
       } catch (error) {
-        console.warn(`无法读取文件 ${filePath}，已跳过。`, error);
+        console.warn(`无法处理文件 ${fileName} (从 ${url})，已跳过。`, error);
       }
     }
 
@@ -40,20 +38,17 @@ export async function POST(request: NextRequest) {
     }
 
     const zipFileName = `processed_documents_${Date.now()}.zip`;
-    const zipFilePath = path.join(process.cwd(), 'tmp', zipFileName);
-
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-    await fs.writeFile(zipFilePath, zipBuffer);
 
-    // Track for cleanup
-    trackSessionFile(zipFilePath);
+    const newBlob = await put(zipFileName, zipBuffer, {
+      access: 'public',
+      contentType: 'application/zip',
+    });
 
-    return new NextResponse(zipBuffer, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="${zipFileName}"`,
-      },
+    return NextResponse.json({ 
+      success: true, 
+      downloadUrl: newBlob.url,
+      fileName: zipFileName
     });
 
   } catch (error) {

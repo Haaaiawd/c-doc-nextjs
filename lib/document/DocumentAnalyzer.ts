@@ -22,38 +22,35 @@ export class DocumentAnalyzer {
   }
 
   /**
-   * 解析 docx 文件，提取标题、作者、正文和字体信息
+   * 解析 docx 文件的 Buffer，提取标题、作者、正文和字体信息
    */  
-  async analyzeDocument(filePath: string, useDeepDetection: boolean = true): Promise<DocxAnalysisResult> {
+  async analyzeDocument(inputBuffer: Buffer, useDeepDetection: boolean = true): Promise<DocxAnalysisResult> {
     try {      
       // 使用 mammoth.js 提取文本内容
-      const { value: extractedText } = await mammoth.extractRawText({ path: filePath });
+      const { value: extractedText } = await mammoth.extractRawText({ buffer: inputBuffer });
       
-      // 基本解析结果
       const result: DocxAnalysisResult = {
         paragraphs: [],
         bodyStyles: [],
         wordCount: this.countWords(extractedText)
       };
       
-      // 解析段落
       const paragraphs = extractedText.split('\n').filter(p => p.trim().length > 0);
       
       // 使用 docx4js 提取详细的样式信息
-      const docx = await docx4js.load(filePath);
+      // @ts-ignore - docx4js的类型定义似乎不完整，但它底层应能处理Buffer
+      const docx = await docx4js.load(inputBuffer);
       
       if (!docx) {
-        console.error('docx对象加载失败');
         throw new Error('文档格式无法解析');
       }
       
       const paragraphInfoMap = await this.extractStyleInfo(docx);
       
-      // 使用深度字体检测器提取更精确的字体信息
       if (useDeepDetection) {
         try {
           console.log('开始使用深度字体检测...');
-          const deepAnalysisResult = await this.deepFontDetector.analyzeDocx(filePath);
+          const deepAnalysisResult = await this.deepFontDetector.analyzeDocx(inputBuffer);
           
           // 收集字体使用情况统计
           const fontUsage = new Map<string, { count: number, samples: string[] }>();
@@ -132,16 +129,15 @@ export class DocumentAnalyzer {
         }
       }
       
-      // 处理文档结构（标题、作者、段落）
       this.processDocumentStructure(result, paragraphs, paragraphInfoMap);
       
       // 提取图片信息
       try {
         console.log('开始提取图片...');
-        const images = await this.extractImages(filePath);
-        if (images.length > 0) {
-          result.images = images;
-          console.log(`成功提取${images.length}张图片`);
+        const imageResult = await this.imageExtractor.extractImagesFromBuffer(inputBuffer);
+        if (imageResult.images.length > 0) {
+          result.images = imageResult.images;
+          console.log(`成功提取${result.images.length}张图片`);
         } else {
           console.log('文档中未找到图片');
         }
@@ -149,9 +145,6 @@ export class DocumentAnalyzer {
         console.warn('提取图片时出错:', imgError);
       }
       
-      console.log('图片提取功能已启用，专注于文档样式处理');
-      
-      // 样式去重
       this.deduplicateStyles(result);
 
       return result;
@@ -162,11 +155,11 @@ export class DocumentAnalyzer {
   }
 
   /**
-   * 获取文档的所有字体信息
+   * 获取文档的所有字体信息 (从 Buffer)
    */
-  async getFontUsage(filePath: string): Promise<Map<string, { count: number, samples: string[] }>> {
+  async getFontUsage(inputBuffer: Buffer): Promise<Map<string, { count: number, samples: string[] }>> {
     try {
-      const analysis = await this.analyzeDocument(filePath, true);
+      const analysis = await this.analyzeDocument(inputBuffer, true);
       
       if (analysis.deepFontAnalysis?.fonts) {
         return analysis.deepFontAnalysis.fonts;
@@ -565,28 +558,6 @@ export class DocumentAnalyzer {
       case 'left':
       default:
         return 'left';
-    }
-  }
-
-  /**
-   * 提取文档中的所有图片
-   */
-  private async extractImages(filePath: string): Promise<{
-    name: string;
-    base64Data?: string;
-    paragraphIndex?: number;
-  }[]> {
-    try {
-      const result = await this.imageExtractor.extractImages(filePath);
-      
-      return result.images.map(img => ({
-        name: img.name,
-        base64Data: img.base64Data,
-        paragraphIndex: img.paragraphIndex
-      }));
-    } catch (error) {
-      console.warn('图片提取过程中出错:', error);
-      return [];
     }
   }
 } 

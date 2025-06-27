@@ -5,7 +5,6 @@ import {
   Document, Packer, Paragraph, 
   AlignmentType, UnderlineType, ImageRun
 } from 'docx';
-import * as fs from 'fs/promises';
 import { ImageExtractor } from '../image-extractor';
 import { DocumentAnalyzer } from './DocumentAnalyzer';
 import { 
@@ -13,7 +12,6 @@ import {
   DocxAnalysisResult,
   ExtractedImage 
 } from '@/types/document-processing';
-import { trackSessionFile } from '../startup';
 
 export class DocumentModifier {
   private documentAnalyzer: DocumentAnalyzer;
@@ -25,31 +23,26 @@ export class DocumentModifier {
   }
 
   /**
-   * 修改文档字体和样式
+   * 修改文档字体和样式 (基于Buffer)
    * 创建一个新的 docx 文档，应用用户指定的字体和样式，同时保留原有图片
+   * @returns {Promise<Buffer>} 返回包含新文档内容的Buffer
    */
   async modifyFonts(
-    inputPath: string, 
-    outputPath: string, 
+    inputBuffer: Buffer, 
     titleOptions?: FontModificationOptions,
     bodyOptions?: FontModificationOptions,
     authorOptions?: FontModificationOptions
-  ): Promise<string> {
+  ): Promise<Buffer> {
     try {
       // 1. 先分析文档，获取内容结构和图片
-      const analysis = await this.documentAnalyzer.analyzeDocument(inputPath);
+      const analysis = await this.documentAnalyzer.analyzeDocument(inputBuffer);
       
       // 2. 提取图片信息
-      let extractedImages: ExtractedImage[] = [];
-      try {
-        const imageResult = await this.imageExtractor.extractImages(inputPath);
-        extractedImages = imageResult.images;
-        console.log(`从原文档提取了${extractedImages.length}张图片用于新文档`);
-      } catch (imgError) {
-        console.warn('提取图片时出错，将创建不含图片的文档:', imgError);
-      }
+      const imageResult = await this.imageExtractor.extractImagesFromBuffer(inputBuffer);
+      const extractedImages = imageResult.images;
+      console.log(`从原文档提取了${extractedImages.length}张图片用于新文档`);
 
-      // 3. 创建新文档
+      // 3. 创建新文档的段落
       const paragraphs = this.createDocumentParagraphs(
         analysis, 
         extractedImages, 
@@ -58,18 +51,14 @@ export class DocumentModifier {
         authorOptions
       );
       
-      // 4. 生成最终文档
+      // 4. 生成最终文档对象
       const doc = this.createDocument(paragraphs, analysis, titleOptions, bodyOptions, authorOptions);
       
-      // 5. 保存文档
+      // 5. 将文档打包成Buffer并返回
       const buffer = await Packer.toBuffer(doc);
-      await fs.writeFile(outputPath, buffer);
-      
-      // 跟踪输出文件用于会话清理
-      trackSessionFile(outputPath);
       
       console.log(`文档处理完成，保留了${extractedImages.length}张图片`);
-      return outputPath;
+      return buffer;
     } catch (error) {
       console.error('修改文档字体和样式时出错:', error);
       throw new Error(`修改文档失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -77,18 +66,16 @@ export class DocumentModifier {
   }
 
   /**
-   * 修改文档中的对齐方式
+   * 修改文档中的对齐方式 (基于Buffer)
    */
   async modifyAlignment(
-    inputPath: string, 
-    outputPath: string, 
+    inputBuffer: Buffer, 
     titleAlignment?: 'left' | 'center' | 'right',
     authorAlignment?: 'left' | 'center' | 'right',
     bodyAlignment?: 'left' | 'center' | 'right' | 'justify'
-  ): Promise<string> {
+  ): Promise<Buffer> {
     return this.modifyFonts(
-      inputPath,
-      outputPath,
+      inputBuffer,
       { targetAlignment: titleAlignment },
       { targetAlignment: bodyAlignment },
       { targetAlignment: authorAlignment }
@@ -96,17 +83,15 @@ export class DocumentModifier {
   }
 
   /**
-   * 为标题添加前缀或后缀
+   * 为标题添加前缀或后缀 (基于Buffer)
    */
   async modifyTitle(
-    inputPath: string, 
-    outputPath: string, 
+    inputBuffer: Buffer, 
     prefix?: string,
     suffix?: string
-  ): Promise<string> {
+  ): Promise<Buffer> {
     return this.modifyFonts(
-      inputPath,
-      outputPath,
+      inputBuffer,
       { addPrefix: prefix, addSuffix: suffix },
       undefined,
       undefined

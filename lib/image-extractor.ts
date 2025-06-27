@@ -4,8 +4,6 @@
  * 使用JSZip解析docx文件，避免docx4js的稳定性问题
  */
 import JSZip from 'jszip';
-import * as fs from 'fs/promises';
-import * as path from 'path';
 
 export interface ExtractedImage {
   name: string;
@@ -52,24 +50,6 @@ export interface ImageExtractionResult {
 
 export class ImageExtractor {
   
-  /**
-   * 从docx文件中提取所有图片 - 增强版
-   * @param filePath docx文件路径
-   * @returns 提取的图片信息
-   */
-  async extractImages(filePath: string): Promise<ImageExtractionResult> {
-    try {
-      console.log('🔍 开始增强版图片提取:', filePath);
-      
-      // 读取docx文件
-      const fileBuffer = await fs.readFile(filePath);
-      return await this.extractImagesFromBuffer(fileBuffer);
-    } catch (error) {
-      console.error('提取图片时出错:', error);
-      throw new Error(`图片提取失败: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
   /**
    * 从buffer中提取图片 - 增强版
    * @param buffer docx文件的buffer
@@ -201,7 +181,7 @@ export class ImageExtractor {
           
           // 检查是否是图片类型
           if (type.includes('image') || target.includes('media/')) {
-            const imageName = path.basename(target);
+            const imageName = target.split('/').pop() || target;
             
             relationships.push({
               relationshipId,
@@ -445,15 +425,18 @@ export class ImageExtractor {
    */
   private isImageFile(fileName: string): boolean {
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.svg'];
-    const ext = path.extname(fileName.toLowerCase());
+    const parts = fileName.toLowerCase().split('.');
+    if (parts.length < 2) return false;
+    const ext = `.${parts.pop()}`;
     return imageExtensions.includes(ext);
   }
 
   /**
-   * 根据文件扩展名获取MIME类型
+   * 根据文件名获取MIME类型
    */
   private getMimeType(fileName: string): string {
-    const ext = path.extname(fileName.toLowerCase());
+    const parts = fileName.toLowerCase().split('.');
+    const ext = parts.length > 1 ? `.${parts.pop()}` : undefined;
     const mimeTypes: Record<string, string> = {
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
@@ -462,10 +445,10 @@ export class ImageExtractor {
       '.bmp': 'image/bmp',
       '.webp': 'image/webp',
       '.tiff': 'image/tiff',
-      '.svg': 'image/svg+xml',
+      '.svg': 'image/svg+xml'
     };
     
-    return mimeTypes[ext] || 'image/png';
+    return ext ? mimeTypes[ext] || 'image/png' : 'image/png';
   }
 }
 

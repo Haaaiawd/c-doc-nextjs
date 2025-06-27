@@ -88,9 +88,7 @@ c-doc-nextjs/
 │   ├── font-utils.ts                 # 字体工具
 │   └── utils.ts                      # 工具函数
 ├── types/                # 类型声明文件
-└── tmp/                  # 临时文件目录
-    ├── uploads/          # 上传文件
-    └── processed/        # 处理后文件
+└── tsconfig.json
 ```
 
 ## 🔗 API 端点
@@ -99,6 +97,7 @@ c-doc-nextjs/
 - `POST /api/analyze/docx` - 文档分析
 - `POST /api/process/docx` - 文档处理
 - `GET /api/files/processed/[fileName]` - 处理后文件下载
+- `POST /api/scheduled-cleanup` - 定时清理
 
 ## 🛠️ 开发说明
 

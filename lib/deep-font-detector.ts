@@ -2,7 +2,6 @@
  * 深度字体检测器
  * 专注于从DOCX内部XML结构中提取精确的字体信息
  */
-import * as fs from 'fs';
 import * as JSZip from 'jszip';
 import { DOMParser } from 'xmldom';
 import { FontInfo } from '@/types/document-processing';
@@ -44,18 +43,17 @@ export class DeepFontDetector {
   private xmlParser = new DOMParser();
   
   /**
-   * 从DOCX文件中提取详细的字体和样式信息
+   * 从DOCX文件的Buffer中提取详细的字体和样式信息
    */
-  public async analyzeDocx(filePath: string): Promise<{ 
+  public async analyzeDocx(inputBuffer: Buffer): Promise<{ 
     styles: StyleInfo[],
     paragraphFonts: Map<number, FontInfo[]>,
     defaultFonts: Record<string, string>
   }> {
-    console.log(`深度分析文档字体: ${filePath}`);
+    console.log(`深度分析文档字体 (从buffer)...`);
     
-    try {      // 读取DOCX文件（实际上是ZIP文件）
-      const fileData = await fs.promises.readFile(filePath);
-      const zip = await JSZip.loadAsync(fileData);
+    try {
+      const zip = await JSZip.loadAsync(inputBuffer);
       
       // 解析样式表
       await this.parseStyles(zip);

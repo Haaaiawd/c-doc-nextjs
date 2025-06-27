@@ -19,35 +19,31 @@ export default class DocxProcessor {
   }
 
   /**
-   * 解析 docx 文件，提取标题、作者、正文和字体信息
-   * 同时使用深度字体检测器提取更准确的字体信息
+   * 解析 docx 文件的 Buffer，提取标题、作者、正文和字体信息
    */  
-  async analyzeDocument(filePath: string, useDeepDetection: boolean = true): Promise<DocxAnalysisResult> {
-    return this.documentAnalyzer.analyzeDocument(filePath, useDeepDetection);
+  async analyzeDocument(inputBuffer: Buffer, useDeepDetection: boolean = true): Promise<DocxAnalysisResult> {
+    return this.documentAnalyzer.analyzeDocument(inputBuffer, useDeepDetection);
   }
 
   /**
-   * 获取文档的所有字体信息 (使用深度检测)
-   * 返回文档中所有使用的字体及其使用情况
+   * 获取文档的所有字体信息 (从 Buffer)
    */
-  async getFontUsage(filePath: string): Promise<Map<string, { count: number, samples: string[] }>> {
-    return this.documentAnalyzer.getFontUsage(filePath);
+  async getFontUsage(inputBuffer: Buffer): Promise<Map<string, { count: number, samples: string[] }>> {
+    return this.documentAnalyzer.getFontUsage(inputBuffer);
   }
 
   /**
-   * 修改文档字体和样式
-   * 创建一个新的 docx 文档，应用用户指定的字体和样式，同时保留原有图片
+   * 修改文档字体和样式 (基于Buffer)
+   * @returns {Promise<Buffer>} 返回包含新文档内容的Buffer
    */
   async modifyFonts(
-    inputPath: string, 
-    outputPath: string, 
+    inputBuffer: Buffer, 
     titleOptions?: FontModificationOptions,
     bodyOptions?: FontModificationOptions,
     authorOptions?: FontModificationOptions
-  ): Promise<string> {
+  ): Promise<Buffer> {
     return this.documentModifier.modifyFonts(
-      inputPath, 
-      outputPath, 
+      inputBuffer, 
       titleOptions, 
       bodyOptions, 
       authorOptions
@@ -55,18 +51,16 @@ export default class DocxProcessor {
   }
   
   /**
-   * 修改文档中的对齐方式
+   * 修改文档中的对齐方式 (基于Buffer)
    */
   async modifyAlignment(
-    inputPath: string, 
-    outputPath: string, 
+    inputBuffer: Buffer,
     titleAlignment?: 'left' | 'center' | 'right',
     authorAlignment?: 'left' | 'center' | 'right',
     bodyAlignment?: 'left' | 'center' | 'right' | 'justify'
-  ): Promise<string> {
+  ): Promise<Buffer> {
     return this.documentModifier.modifyAlignment(
-      inputPath,
-      outputPath,
+      inputBuffer,
       titleAlignment,
       authorAlignment,
       bodyAlignment
@@ -74,14 +68,13 @@ export default class DocxProcessor {
   }
 
   /**
-   * 为标题添加前缀或后缀
+   * 为标题添加前缀或后缀 (基于Buffer)
    */
   async modifyTitle(
-    inputPath: string, 
-    outputPath: string, 
+    inputBuffer: Buffer, 
     prefix?: string,
     suffix?: string
-  ): Promise<string> {
-    return this.documentModifier.modifyTitle(inputPath, outputPath, prefix, suffix);
+  ): Promise<Buffer> {
+    return this.documentModifier.modifyTitle(inputBuffer, prefix, suffix);
   }
 } 
