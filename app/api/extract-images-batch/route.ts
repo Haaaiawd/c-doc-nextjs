@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import JSZip from 'jszip';
 import * as path from 'path';
 import { put } from '@vercel/blob';
+import { kv } from '@vercel/kv';
 import { ImageExtractor, ExtractedImage } from '@/lib/image-extractor';
 
 /**
@@ -64,6 +65,11 @@ export async function POST(request: NextRequest) {
       access: 'public',
       contentType: 'application/zip',
     });
+
+    // Create metadata record in Vercel KV for the zip file
+    const key = `batch-images:${newBlob.pathname}`;
+    const expiresAt = Date.now() + (24 * 60 * 60 * 1000);
+    await kv.set(key, { url: newBlob.url, expiresAt });
 
     return NextResponse.json({
       success: true,

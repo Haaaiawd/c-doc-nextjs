@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { ProcessedDocument, DocumentStatus } from '@/app/types';
 import { generateUUID } from '@/lib/utils';
+import { kv } from '@vercel/kv';
+import { v4 as uuidv4 } from 'uuid';
 
 // 为文件创建唯一标识符并返回详细信息
 function createFileInfo(file: File, blobUrl: string): ProcessedDocument {
@@ -16,47 +18,27 @@ function createFileInfo(file: File, blobUrl: string): ProcessedDocument {
   };
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    const files = formData.getAll('files');
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const { searchParams } = new URL(request.url);
+  const filename = searchParams.get('filename');
 
-    if (!files || files.length === 0) {
-      return NextResponse.json({ success: false, error: 'No files uploaded.' }, { status: 400 });
-    }
-
-    const processedFiles: ProcessedDocument[] = [];
-
-    for (const fileEntry of files) {
-      if (fileEntry instanceof File) {
-        try {
-          // 将文件上传到 Vercel Blob
-          const blob = await put(fileEntry.name, fileEntry, {
-            access: 'public',
-          });
-
-          const fileInfo = createFileInfo(fileEntry, blob.url);
-          processedFiles.push(fileInfo);
-
-        } catch (error) {
-          console.error(`Error saving file ${fileEntry.name} to blob:`, error);
-          const tempFileInfo = createFileInfo(fileEntry, '');
-          processedFiles.push({
-            ...tempFileInfo,
-            status: 'failed',
-            errorMessage: 'Failed to save file to cloud storage.',
-          });
-        }
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `${files.length} files received and processed.`,
-      files: processedFiles
-    });
-  } catch (error) {
-    console.error('Error handling file upload:', error);
-    return NextResponse.json({ success: false, error: 'Error processing request.' }, { status: 500 });
+  if (!filename) {
+    return NextResponse.json({ error: 'No filename provided' }, { status: 400 });
   }
+
+  if (!request.body) {
+    return NextResponse.json({ error: 'No body provided' }, { status: 400 });
+  }
+
+  const blob = await put(filename, request.body, {
+    access: 'public',
+  });
+
+  // Create metadata record in Vercel KV
+  const key = `blob:${uuidv4()}`;
+  const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours in milliseconds
+  await kv.set(key, { url: blob.url, expiresAt });
+
+  // Return the original blob response to the client
+  return NextResponse.json(blob);
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
+import { kv } from '@vercel/kv';
 import DocxProcessor from '@/lib/docx-processor-integrated';
 import * as path from 'path';
 import { FontModificationOptions } from '@/types/document-processing';
@@ -56,7 +57,8 @@ export async function POST(request: NextRequest) {
     }
     
     const fileNameBase = applyFileNameTemplate(fileNameTemplate || "{title}", originalFileName, titleText, authorText);
-    const outputFileName = `${fileNameBase}.docx`;
+    const timestamp = Date.now();
+    const outputFileName = `${timestamp}_${fileNameBase}.docx`;
 
     let finalTitleOptions: FontModificationOptions | undefined;
     let finalBodyOptions: FontModificationOptions | undefined;
@@ -105,6 +107,11 @@ export async function POST(request: NextRequest) {
     const newBlob = await put(outputFileName, modifiedBuffer, {
       access: 'public',
     });
+
+    // Create metadata record in Vercel KV for the processed file
+    const key = `processed:${newBlob.pathname}`;
+    const expiresAt = Date.now() + (24 * 60 * 60 * 1000);
+    await kv.set(key, { url: newBlob.url, expiresAt });
 
     return NextResponse.json({
       success: true,
