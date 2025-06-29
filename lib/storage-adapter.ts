@@ -102,28 +102,48 @@ export class StorageAdapter {
    * 获取文件内容
    */
   async getFileContent(fileId: string): Promise<Buffer | null> {
+    console.log(`📖 获取文件内容: ${fileId}`);
+    
     const metadata = await this.getFileMetadata(fileId);
-    if (!metadata) return null;
+    if (!metadata) {
+      console.log(`❌ 无法获取文件元数据: ${fileId}`);
+      return null;
+    }
 
     if (this.isLocal) {
       // 本地存储
-      if (!metadata.filePath) return null;
+      if (!metadata.filePath) {
+        console.log(`❌ 本地文件路径为空: ${fileId}`);
+        return null;
+      }
       try {
-        return await fs.readFile(metadata.filePath);
+        console.log(`📂 读取本地文件: ${metadata.filePath}`);
+        const content = await fs.readFile(metadata.filePath);
+        console.log(`✅ 成功读取本地文件，大小: ${content.length} bytes`);
+        return content;
       } catch (error) {
-        console.error(`读取本地文件失败: ${metadata.filePath}`, error);
+        console.error(`❌ 读取本地文件失败: ${metadata.filePath}`, error);
         return null;
       }
     } else {
       // 云存储
-      if (!metadata.blobUrl) return null;
+      if (!metadata.blobUrl) {
+        console.log(`❌ 云文件URL为空: ${fileId}`);
+        return null;
+      }
       try {
+        console.log(`☁️ 下载云文件: ${metadata.blobUrl}`);
         const response = await fetch(metadata.blobUrl);
-        if (!response.ok) return null;
+        if (!response.ok) {
+          console.log(`❌ 云文件下载失败: ${response.status} ${response.statusText}`);
+          return null;
+        }
         const arrayBuffer = await response.arrayBuffer();
-        return Buffer.from(arrayBuffer);
+        const content = Buffer.from(arrayBuffer);
+        console.log(`✅ 成功下载云文件，大小: ${content.length} bytes`);
+        return content;
       } catch (error) {
-        console.error(`下载云文件失败: ${metadata.blobUrl}`, error);
+        console.error(`❌ 下载云文件失败: ${metadata.blobUrl}`, error);
         return null;
       }
     }
@@ -133,36 +153,52 @@ export class StorageAdapter {
    * 获取文件元数据
    */
   async getFileMetadata(fileId: string): Promise<FileMetadata | null> {
+    console.log(`🔍 获取文件元数据: ${fileId}, 存储模式: ${this.isLocal ? '本地' : '云端'}`);
+    
     if (this.isLocal) {
       // 本地存储：从文件系统中查找
       try {
+        await this.ensureUploadDir();
         const files = await fs.readdir(this.uploadDir);
-        const targetFile = files.find(file => file.startsWith(fileId));
-        if (!targetFile) return null;
+        console.log(`📁 本地文件列表:`, files);
+        
+        const targetFile = files.find(file => file.startsWith(fileId + '_'));
+        console.log(`🎯 找到目标文件: ${targetFile}`);
+        
+        if (!targetFile) {
+          console.log(`❌ 未找到文件: ${fileId}`);
+          return null;
+        }
 
         const filePath = path.join(this.uploadDir, targetFile);
         const stats = await fs.stat(filePath);
         
-        // 从文件名解析原始名称
-        const originalName = targetFile.substring(37); // 移除 UUID_ 前缀
+        // 从文件名解析原始名称 (格式: UUID_originalname)
+        const originalName = targetFile.substring(fileId.length + 1); // 移除 UUID_ 前缀
+        console.log(`📄 解析的原始文件名: ${originalName}`);
         
-        return {
+        const metadata = {
           id: fileId,
           originalName: originalName,
           filePath: filePath,
           pathname: targetFile,
-          status: 'uploaded',
+          status: 'uploaded' as const,
           uploadedAt: stats.birthtime.toISOString(),
           processedBlobUrl: null,
           extractedImages: null,
         };
+        
+        console.log(`✅ 本地文件元数据:`, metadata);
+        return metadata;
       } catch (error) {
-        console.error(`获取本地文件元数据失败: ${fileId}`, error);
+        console.error(`❌ 获取本地文件元数据失败: ${fileId}`, error);
         return null;
       }
     } else {
       // 云存储
-      return await kv.get(`file:${fileId}`) as FileMetadata | null;
+      const metadata = await kv.get(`file:${fileId}`) as FileMetadata | null;
+      console.log(`☁️ 云端文件元数据:`, metadata);
+      return metadata;
     }
   }
 

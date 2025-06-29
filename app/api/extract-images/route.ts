@@ -4,23 +4,32 @@ import { ImageExtractor, ExtractedImage } from '@/lib/image-extractor';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🎨 开始图片提取请求');
     const requestData = await request.json();
+    console.log('📥 请求数据:', requestData);
     const { fileId } = requestData;
 
     if (!fileId) {
+      console.log('❌ 缺少文件ID');
       return NextResponse.json({ success: false, error: '缺少文件ID' }, { status: 400 });
     }
+
+    console.log(`🔍 开始提取图片，文件ID: ${fileId}`);
 
     // 使用存储适配器获取文件
     const fileContent = await storageAdapter.getFileContent(fileId);
     if (!fileContent) {
+      console.log(`❌ 无法获取文件内容: ${fileId}`);
       return NextResponse.json({ success: false, error: '找不到指定的文件' }, { status: 404 });
     }
 
     const metadata = await storageAdapter.getFileMetadata(fileId);
     if (!metadata) {
+      console.log(`❌ 无法获取文件元数据: ${fileId}`);
       return NextResponse.json({ success: false, error: '无法获取文件元数据' }, { status: 404 });
     }
+
+    console.log(`📄 文件信息: ${metadata.originalName}, 大小: ${fileContent.length} bytes`);
 
     const imageExtractor = new ImageExtractor();
     const extractionResult = await imageExtractor.extractImagesFromBuffer(fileContent);
@@ -58,19 +67,32 @@ export async function POST(request: NextRequest) {
       extractedImages: uploadedImages
     });
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
-      totalImages: extractionResult.images.length,
+      data: {
+        totalCount: extractionResult.images.length,
+        totalSize: extractionResult.images.reduce((sum, img) => sum + img.size, 0),
+        images: extractionResult.images,
+        relationshipDetails: extractionResult.relationshipDetails,
+        paragraphImages: extractionResult.paragraphImages,
+        statistics: extractionResult.statistics
+      },
       uploadedImages: uploadedImages,
       imageData: extractionResult.images.map((img: ExtractedImage) => ({
         name: img.name,
         paragraphIndex: img.paragraphIndex,
         runIndex: img.runIndex,
         size: img.size
-      })),
-      relationshipDetails: extractionResult.relationshipDetails,
-      paragraphImages: extractionResult.paragraphImages
+      }))
+    };
+
+    console.log('✅ 图片提取完成，返回数据:', {
+      totalImages: extractionResult.images.length,
+      uploadedImages: uploadedImages.length,
+      statistics: extractionResult.statistics
     });
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('提取图片时出错:', error);
