@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     const requestData = await request.json();
     const { 
-      fileId,
+      blobUrl,
       originalFileName,
       fileNameTemplate,
       template,
@@ -34,11 +34,11 @@ export async function POST(request: NextRequest) {
       authorOptions
     } = requestData;
 
-    if (!fileId || !originalFileName) {
+    if (!blobUrl || !originalFileName) {
       return NextResponse.json({ success: false, error: '缺少文件URL或原始文件名' }, { status: 400 });
     }
 
-    const response = await fetch(fileId);
+    const response = await fetch(blobUrl);
     if (!response.ok) {
       throw new Error(`无法从Blob存储下载文件: ${response.statusText}`);
     }

@@ -85,6 +85,8 @@ export function useDocumentProcessing(): UseDocumentProcessingReturn {
 
         const requestBody = {
           fileId: doc.id,
+          blobUrl: doc.blobUrl, // 添加blob URL
+          originalFileName: doc.originalFileName,
           fileNameTemplate,
           template: selectedTemplate, // 使用选定的模板
         };

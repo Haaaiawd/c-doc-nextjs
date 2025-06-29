@@ -40,6 +40,9 @@ export interface ProcessedDocument {
   fileType: string; // 文件MIME类型, 主要关注 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   fileSize: number; // 文件大小（字节）
   uploadDate: string; // ISO 8601 格式的日期字符串
+  blobUrl?: string; // Vercel Blob 存储的URL
+  pathname?: string; // Blob 存储路径
+  uploadedAt?: string; // 上传时间戳
 
   status: 'selected' | 'pending' | 'uploading' | 'uploaded' | 'uploaded_to_server' | 'converting_doc_to_docx' | 'analyzing' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
