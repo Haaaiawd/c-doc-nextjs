@@ -154,3 +154,18 @@ export interface TemplateOption {
   description: string;
   template: DocumentTemplate;
 }
+
+/**
+ * Represents the metadata for a file stored in Vercel Blob and tracked in Vercel KV.
+ * This is the primary data model for the new serverless architecture.
+ */
+export interface FileMetadata {
+  id: string;
+  originalName: string;
+  blobUrl: string;
+  pathname: string;
+  status: 'uploaded' | 'processing' | 'processed' | 'error';
+  uploadedAt: string;
+  processedBlobUrl: string | null;
+  extractedImages: { name: string; url: string; }[] | null;
+}
