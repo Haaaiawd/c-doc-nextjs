@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
+import { kv } from '@vercel/kv';
 import DocxProcessor from '@/lib/docx-processor-integrated';
-import { promises as fs } from 'fs';
-
-// 确保上传目录存在
-const UPLOAD_DIR = path.join(process.cwd(), 'tmp', 'uploads');
 
 // 分析上传的 .docx 文件
 export async function POST(request: NextRequest) {
@@ -16,26 +12,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '缺少文件ID' }, { status: 400 });
     }
 
-    // 查找带有此 ID 的文件
-    const files = await fs.readdir(UPLOAD_DIR);
-    const targetFile = files.find(file => file.startsWith(fileId));
-
-    if (!targetFile) {
+    // 从KV存储获取文件元数据
+    const fileMetadata = await kv.get(`file:${fileId}`);
+    if (!fileMetadata) {
       return NextResponse.json({ success: false, error: '找不到指定的文件' }, { status: 404 });
     }
 
-    const filePath = path.join(UPLOAD_DIR, targetFile);
+    const metadata = fileMetadata as { blobUrl: string; originalName: string };
+    const blobUrl = metadata.blobUrl;
+    
+    if (!blobUrl) {
+      return NextResponse.json({ success: false, error: '文件URL不存在' }, { status: 404 });
+    }
+
+    // 从Blob存储下载文件
+    const response = await fetch(blobUrl);
+    if (!response.ok) {
+      throw new Error(`无法从Blob存储下载文件: ${response.statusText}`);
+    }
+    const fileBuffer = await response.arrayBuffer();
+    const inputBuffer = Buffer.from(fileBuffer);
     
     // 创建 DocxProcessor 实例
     const processor = new DocxProcessor();
       // 分析文档
     try {
-      const analysisResult = await processor.analyzeDocument(filePath);
+      const analysisResult = await processor.analyzeDocument(inputBuffer);
       
       return NextResponse.json({
         success: true,
         fileId,
-        fileName: targetFile,
+        fileName: metadata.originalName,
         analysis: analysisResult,
         usedDeepDetection: !!analysisResult.deepFontAnalysis
       });
@@ -114,3 +121,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: outerErrorMessage }, { status: 500 });
   }
 }
+

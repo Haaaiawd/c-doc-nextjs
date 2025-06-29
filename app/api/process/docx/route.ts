@@ -52,13 +52,17 @@ export async function POST(request: NextRequest) {
       const analysisResult = await processor.analyzeDocument(inputBuffer);
       titleText = analysisResult.title?.text;
       authorText = analysisResult.author?.text;
+      console.log('文档分析结果:', { titleText, authorText });
     } catch (error) {
       console.warn('无法分析文档内容，将使用默认文件名:', error);
     }
     
+    console.log('文件名模板参数:', { fileNameTemplate, originalFileName, titleText, authorText });
     const fileNameBase = applyFileNameTemplate(fileNameTemplate || "{title}", originalFileName, titleText, authorText);
+    console.log('生成的文件名基础:', fileNameBase);
     const timestamp = Date.now();
     const outputFileName = `${timestamp}_${fileNameBase}.docx`;
+    console.log('最终输出文件名:', outputFileName);
 
     let finalTitleOptions: FontModificationOptions | undefined;
     let finalBodyOptions: FontModificationOptions | undefined;
