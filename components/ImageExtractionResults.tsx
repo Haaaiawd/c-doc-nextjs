@@ -5,6 +5,7 @@
 import { Button } from "@/components/ui/button";
 import { ImageExtractionState } from '@/types/document-processing';
 import { useToast } from '@/components/ui/toast';
+import Image from 'next/image';
 
 interface ImageExtractionResultsProps {
   fileId: string;
@@ -70,13 +71,17 @@ export function ImageExtractionResults({
             
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {imagesByParagraph[paragraphIndex].map((img) => (
-                <div key={img.originalIndex} className="border border-gray-200 rounded-lg p-2 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <img 
-                    src={img.base64Data} 
-                    alt={img.name}
-                    className="w-full h-20 object-cover rounded mb-2"
-                    title={`${img.name} (${img.mimeType}, ${(img.size / 1024).toFixed(1)} KB)`}
-                  />
+                <div key={img.originalIndex} className="relative border border-gray-200 rounded-lg p-2 bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div className="relative w-full h-20 mb-2">
+                    <Image 
+                      src={img.base64Data} 
+                      alt={img.name}
+                      layout="fill"
+                      objectFit="cover"
+                      className="rounded"
+                      title={`${img.name} (${img.mimeType}, ${(img.size / 1024).toFixed(1)} KB)`}
+                    />
+                  </div>
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-gray-700 truncate" title={img.name}>
                       {img.name.split('/').pop() || img.name}

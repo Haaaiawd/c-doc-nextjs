@@ -38,7 +38,7 @@ export class DocumentAnalyzer {
       const paragraphs = extractedText.split('\n').filter(p => p.trim().length > 0);
       
       // 使用 docx4js 提取详细的样式信息
-      // @ts-ignore - docx4js的类型定义似乎不完整，但它底层应能处理Buffer
+      // @ts-expect-error - docx4js的类型定义似乎不完整，但它底层应能处理Buffer
       const docx = await docx4js.load(inputBuffer);
       
       if (!docx) {

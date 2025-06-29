@@ -1,22 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import { ProcessedDocument, DocumentStatus } from '@/app/types';
-import { generateUUID } from '@/lib/utils';
-import { kv } from '@vercel/kv';
 import { v4 as uuidv4 } from 'uuid';
-
-// 为文件创建唯一标识符并返回详细信息
-function createFileInfo(file: File, blobUrl: string): ProcessedDocument {
-  return {
-    id: generateUUID(),
-    originalFileName: file.name,
-    fileType: file.type,
-    fileSize: file.size,
-    uploadDate: new Date().toISOString(),
-    status: 'uploaded_to_server' as const,
-    processedFileUrl: blobUrl, // 使用Blob的URL
-  };
-}
+import { kv } from '@vercel/kv';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
