@@ -286,60 +286,93 @@ export function useFileManagement(): UseFileManagementReturn {
         return;
       }
 
-      // 模拟上传进度
-      currentBatchIds.forEach(id => {
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += Math.random() * 20;
-          if (progress >= 90) {
-            setUploadProgress(prev => ({ ...prev, [id]: 90 }));
-            clearInterval(interval);
-          } else {
-            setUploadProgress(prev => ({ ...prev, [id]: progress }));
+      // 逐个上传文件
+      const uploadedFiles: any[] = [];
+      
+      for (let i = 0; i < processedFiles.length; i++) {
+        const file = processedFiles[i];
+        const docId = processedDocuments.find(d => d.originalFileName === file.name)?.id;
+        
+        try {
+          // 设置上传进度
+          if (docId) {
+            setUploadProgress(prev => ({ ...prev, [docId]: 10 }));
           }
-        }, 200);
-      });
 
-      const formData = new FormData();
-      processedFiles.forEach((file) => {
-        formData.append('files', file);
-      });
+          // 使用 URL 参数传递文件名，body 直接传递文件内容
+          const uploadUrl = `/api/upload?filename=${encodeURIComponent(file.name)}`;
+          
+          const response = await fetch(uploadUrl, {
+            method: 'POST',
+            body: file, // 直接传递文件对象，不使用 FormData
+            headers: {
+              'Content-Type': file.type || 'application/octet-stream',
+            },
+          });
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: '上传失败' }));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
 
-      const result: UploadResponse = await response.json();
+          const uploadResult = await response.json();
+          uploadedFiles.push(uploadResult);
 
-      if (result.success && result.files) {
-        // 完成上传进度
-        currentBatchIds.forEach(id => {
-          setUploadProgress(prev => ({ ...prev, [id]: 100 }));
-        });
+          // 更新上传进度
+          if (docId) {
+            setUploadProgress(prev => ({ ...prev, [docId]: 100 }));
+          }
 
-        // 更新文档状态
-        setProcessedDocuments(prevDocs => 
-          prevDocs.map(doc => {
-            const uploadedFile = result.files!.find(f => f.originalFileName === doc.originalFileName);
-            if (uploadedFile && currentBatchIds.includes(doc.id)) {
-              return {
-                ...doc,
-                ...uploadedFile,
-                status: 'uploaded_to_server' as const
-              };
-            }
-            return doc;
-          })
-        );
+          // 更新单个文件的状态
+          setProcessedDocuments(prevDocs => 
+            prevDocs.map(doc => 
+              doc.id === docId 
+                ? {
+                    ...doc,
+                    id: uploadResult.id, // 使用服务器返回的ID
+                    blobUrl: uploadResult.blobUrl,
+                    pathname: uploadResult.pathname,
+                    uploadedAt: uploadResult.uploadedAt,
+                    status: 'uploaded_to_server' as const
+                  }
+                : doc
+            )
+          );
 
+        } catch (error) {
+          console.error(`上传文件 ${file.name} 失败:`, error);
+          
+          // 更新失败文件的状态
+          if (docId) {
+            setProcessedDocuments(prevDocs => 
+              prevDocs.map(doc => 
+                doc.id === docId 
+                  ? { 
+                      ...doc, 
+                      status: 'failed' as const, 
+                      errorMessage: `上传失败: ${error instanceof Error ? error.message : '未知错误'}`
+                    }
+                  : doc
+              )
+            );
+          }
+        }
+      }
+
+      if (uploadedFiles.length > 0) {
         showToast?.({
           type: 'success',
           title: '上传成功',
-          description: `成功上传 ${result.files.length} 个文件！`
+          description: `成功上传 ${uploadedFiles.length} 个文件！`
         });
-      } else {
-        throw new Error(result.message || result.error || '上传失败');
+      }
+
+      if (uploadedFiles.length < processedFiles.length) {
+        showToast?.({
+          type: 'warning',
+          title: '部分文件上传失败',
+          description: `${processedFiles.length - uploadedFiles.length} 个文件上传失败，请检查错误信息。`
+        });
       }
     } catch (error) {
       console.error('Upload error:', error);
