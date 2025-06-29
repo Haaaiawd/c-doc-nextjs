@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import JSZip from 'jszip';
 import * as path from 'path';
-import { put } from '@vercel/blob';
-import { kv } from '@vercel/kv';
+import { storageAdapter } from '@/lib/storage-adapter';
 import { ImageExtractor, ExtractedImage } from '@/lib/image-extractor';
 
 /**
@@ -10,7 +9,7 @@ import { ImageExtractor, ExtractedImage } from '@/lib/image-extractor';
  */
 export async function POST(request: NextRequest) {
   try {
-    const { files } = await request.json(); // Expecting { url, originalFileName }
+    const { files } = await request.json(); // Expecting { id, originalFileName }
 
     if (!files || !Array.isArray(files) || files.length === 0) {
       return NextResponse.json({ error: '请提供一个包含文件信息的数组' }, { status: 400 });
@@ -21,21 +20,23 @@ export async function POST(request: NextRequest) {
     let totalImagesExtracted = 0;
 
     for (const file of files) {
-      const { url, originalFileName } = file;
-      if (!url || !originalFileName) {
+      const { id, originalFileName } = file;
+      if (!id || !originalFileName) {
         console.warn(`文件信息不完整，已跳过: ${JSON.stringify(file)}`);
         continue;
       }
 
       try {
-        console.log(`正在处理文件: ${originalFileName} (从 ${url})`);
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`无法从Blob下载文件: ${url}`);
+        console.log(`正在处理文件: ${originalFileName} (ID: ${id})`);
+        
+        // 使用存储适配器获取文件内容
+        const fileContent = await storageAdapter.getFileContent(id);
+        if (!fileContent) {
+          console.warn(`无法获取文件内容: ${id}`);
+          continue;
         }
-        const fileBuffer = await response.arrayBuffer();
       
-        const extractionResult = await imageExtractor.extractImagesFromBuffer(Buffer.from(fileBuffer));
+        const extractionResult = await imageExtractor.extractImagesFromBuffer(fileContent);
       
         if (extractionResult.images.length > 0) {
           const docxBaseName = path.parse(originalFileName).name;
@@ -61,19 +62,12 @@ export async function POST(request: NextRequest) {
     const zipFileName = `extracted_images_${Date.now()}.zip`;
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
 
-    const newBlob = await put(zipFileName, zipBuffer, {
-      access: 'public',
-      contentType: 'application/zip',
-    });
-
-    // Create metadata record in Vercel KV for the zip file
-    const key = `batch-images:${newBlob.pathname}`;
-    const expiresAt = Date.now() + (24 * 60 * 60 * 1000);
-    await kv.set(key, { url: newBlob.url, expiresAt });
+    // 使用存储适配器上传zip文件
+    const zipUrl = await storageAdapter.uploadProcessedFile(zipFileName, zipBuffer);
 
     return NextResponse.json({
       success: true,
-      downloadUrl: newBlob.url,
+      downloadUrl: zipUrl,
       fileName: zipFileName
     });
 

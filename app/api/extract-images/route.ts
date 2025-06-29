@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
-import { put } from '@vercel/blob';
+import { storageAdapter } from '@/lib/storage-adapter';
 import { ImageExtractor, ExtractedImage } from '@/lib/image-extractor';
 
 export async function POST(request: NextRequest) {
@@ -12,30 +11,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '缺少文件ID' }, { status: 400 });
     }
 
-    // 从KV存储获取文件元数据
-    const fileMetadata = await kv.get(`file:${fileId}`);
-    if (!fileMetadata) {
+    // 使用存储适配器获取文件
+    const fileContent = await storageAdapter.getFileContent(fileId);
+    if (!fileContent) {
       return NextResponse.json({ success: false, error: '找不到指定的文件' }, { status: 404 });
     }
 
-    const metadata = fileMetadata as { blobUrl: string; originalName: string; extractedImages?: { name: string; url: string; }[] };
-    const blobUrl = metadata.blobUrl;
-    
-    if (!blobUrl) {
-      return NextResponse.json({ success: false, error: '文件URL不存在' }, { status: 404 });
+    const metadata = await storageAdapter.getFileMetadata(fileId);
+    if (!metadata) {
+      return NextResponse.json({ success: false, error: '无法获取文件元数据' }, { status: 404 });
     }
-
-    // 从Blob存储下载文件
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      throw new Error(`无法从Blob存储下载文件: ${response.statusText}`);
-    }
-    const fileBuffer = await response.arrayBuffer();
 
     const imageExtractor = new ImageExtractor();
-    const extractionResult = await imageExtractor.extractImagesFromBuffer(Buffer.from(fileBuffer));
+    const extractionResult = await imageExtractor.extractImagesFromBuffer(fileContent);
 
-    // 将提取的图片上传到Blob存储
+    // 将提取的图片保存（本地或云存储）
     const uploadedImages: { name: string; url: string; }[] = [];
     
     if (extractionResult.images.length > 0) {
@@ -50,23 +40,20 @@ export async function POST(request: NextRequest) {
           const base64Data = image.base64Data.split(',')[1]; // 移除data:image/png;base64,前缀
           const imageBuffer = Buffer.from(base64Data, 'base64');
           
-          const blob = await put(fileName, imageBuffer, {
-            access: 'public',
-            contentType: image.mimeType || 'image/png',
-          });
+          const imageUrl = await storageAdapter.uploadProcessedFile(fileName, imageBuffer);
           
           uploadedImages.push({
             name: fileName,
-            url: blob.url
+            url: imageUrl
           });
         } catch (error) {
-          console.error(`上传图片 ${fileName} 失败:`, error);
+          console.error(`保存图片 ${fileName} 失败:`, error);
         }
       }
     }
 
     // 更新文件元数据中的提取图片信息
-    await kv.set(`file:${fileId}`, {
+    await storageAdapter.setFileMetadata(fileId, {
       ...metadata,
       extractedImages: uploadedImages
     });

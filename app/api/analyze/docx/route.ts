@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { storageAdapter } from '@/lib/storage-adapter';
 import DocxProcessor from '@/lib/docx-processor-integrated';
 
 // 分析上传的 .docx 文件
@@ -12,32 +12,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '缺少文件ID' }, { status: 400 });
     }
 
-    // 从KV存储获取文件元数据
-    const fileMetadata = await kv.get(`file:${fileId}`);
-    if (!fileMetadata) {
+    // 使用存储适配器获取文件
+    const fileContent = await storageAdapter.getFileContent(fileId);
+    if (!fileContent) {
       return NextResponse.json({ success: false, error: '找不到指定的文件' }, { status: 404 });
     }
 
-    const metadata = fileMetadata as { blobUrl: string; originalName: string };
-    const blobUrl = metadata.blobUrl;
-    
-    if (!blobUrl) {
-      return NextResponse.json({ success: false, error: '文件URL不存在' }, { status: 404 });
+    const metadata = await storageAdapter.getFileMetadata(fileId);
+    if (!metadata) {
+      return NextResponse.json({ success: false, error: '无法获取文件元数据' }, { status: 404 });
     }
-
-    // 从Blob存储下载文件
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      throw new Error(`无法从Blob存储下载文件: ${response.statusText}`);
-    }
-    const fileBuffer = await response.arrayBuffer();
-    const inputBuffer = Buffer.from(fileBuffer);
     
     // 创建 DocxProcessor 实例
     const processor = new DocxProcessor();
       // 分析文档
     try {
-      const analysisResult = await processor.analyzeDocument(inputBuffer);
+      const analysisResult = await processor.analyzeDocument(fileContent);
       
       return NextResponse.json({
         success: true,

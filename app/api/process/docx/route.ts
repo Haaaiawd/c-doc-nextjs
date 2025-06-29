@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
-import { kv } from '@vercel/kv';
+import { storageAdapter } from '@/lib/storage-adapter';
 import DocxProcessor from '@/lib/docx-processor-integrated';
 import * as path from 'path';
 import { FontModificationOptions } from '@/types/document-processing';
@@ -25,7 +24,6 @@ export async function POST(request: NextRequest) {
   try {
     const requestData = await request.json();
     const { 
-      blobUrl,
       originalFileName,
       fileNameTemplate,
       template,
@@ -34,16 +32,15 @@ export async function POST(request: NextRequest) {
       authorOptions
     } = requestData;
 
-    if (!blobUrl || !originalFileName) {
-      return NextResponse.json({ success: false, error: '缺少文件URL或原始文件名' }, { status: 400 });
+    if (!originalFileName) {
+      return NextResponse.json({ success: false, error: '缺少原始文件名' }, { status: 400 });
     }
 
-    const response = await fetch(blobUrl);
-    if (!response.ok) {
-      throw new Error(`无法从Blob存储下载文件: ${response.statusText}`);
+    // 使用存储适配器获取文件内容
+    const inputBuffer = await storageAdapter.getFileContent(requestData.fileId);
+    if (!inputBuffer) {
+      return NextResponse.json({ success: false, error: '无法获取文件内容' }, { status: 404 });
     }
-    const fileBuffer = await response.arrayBuffer();
-    const inputBuffer = Buffer.from(fileBuffer);
 
     const processor = new DocxProcessor();
     
@@ -108,18 +105,12 @@ export async function POST(request: NextRequest) {
 
     const modifiedBuffer = await processor.modifyFonts(inputBuffer, finalTitleOptions, finalBodyOptions, finalAuthorOptions);
 
-    const newBlob = await put(outputFileName, modifiedBuffer, {
-      access: 'public',
-    });
-
-    // Create metadata record in Vercel KV for the processed file
-    const key = `processed:${newBlob.pathname}`;
-    const expiresAt = Date.now() + (24 * 60 * 60 * 1000);
-    await kv.set(key, { url: newBlob.url, expiresAt });
+    // 使用存储适配器保存处理后的文件
+    const processedFileUrl = await storageAdapter.uploadProcessedFile(outputFileName, modifiedBuffer);
 
     return NextResponse.json({
       success: true,
-      processedFileUrl: newBlob.url,
+      processedFileUrl: processedFileUrl,
       processedFileName: outputFileName,
     });
 

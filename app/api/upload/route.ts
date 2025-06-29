@@ -1,19 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
-import { v4 as uuidv4 } from 'uuid';
-import { kv } from '@vercel/kv';
-
-// Define the structure for our file metadata
-export interface FileMetadata {
-  id: string;
-  originalName: string;
-  blobUrl: string;
-  pathname: string;
-  status: 'uploaded' | 'processing' | 'processed' | 'error';
-  uploadedAt: string;
-  processedBlobUrl: string | null;
-  extractedImages: string[] | null; // URLs of extracted images
-}
+import { storageAdapter } from '@/lib/storage-adapter';
 
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -27,38 +13,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!request.body) {
     return NextResponse.json({ error: 'File body is required' }, { status: 400 });
   }
-  
-  const fileId = uuidv4();
-  // Sanitize filename and create a unique path in the blob storage
-  const sanitizedFilename = originalName.replace(/[^a-zA-Z0-9._-]/g, '');
-  const blobPathname = `uploads/${fileId}/${sanitizedFilename}`;
 
   try {
-    const blob = await put(blobPathname, request.body, {
-      access: 'public',
-      // We can add cache control headers if needed
-      // cacheControl: 'public, max-age=31536000, immutable',
-    });
+    // 将请求体转换为Buffer
+    const arrayBuffer = await request.arrayBuffer();
+    const fileContent = Buffer.from(arrayBuffer);
 
-    // Create the metadata object
-    const metadata: FileMetadata = {
-      id: fileId,
-      originalName: originalName,
-      blobUrl: blob.url,
-      pathname: blob.pathname,
-      status: 'uploaded',
-      uploadedAt: new Date().toISOString(),
-      processedBlobUrl: null,
-      extractedImages: null,
-    };
+    // 使用存储适配器上传文件
+    const metadata = await storageAdapter.uploadFile(fileContent, originalName);
 
-    // Use a transaction to ensure both operations succeed
-    const multi = kv.multi();
-    multi.set(`file:${fileId}`, metadata);
-    multi.sadd('files', fileId);
-    await multi.exec();
-
-    // Return the full metadata object to the client
+    // 返回元数据给客户端
     return NextResponse.json(metadata, { status: 200 });
 
   } catch (error) {

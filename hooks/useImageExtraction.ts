@@ -71,24 +71,13 @@ export function useImageExtraction(): UseImageExtractionReturn {
     }));
 
     try {
-      // 通过文件服务API获取文件
-      const fileExtension = path.extname(doc.originalFileName);
-      const fileUrl = `/api/files/${fileId}${fileExtension}`;
-      
-      console.log('🔍 开始获取文件进行图片提取...');
-      const fileResponse = await fetch(fileUrl);
-      if (!fileResponse.ok) {
-        throw new Error('无法获取已上传的文件');
-      }
-
-      const fileBlob = await fileResponse.blob();
-      const formData = new FormData();
-      formData.append('file', fileBlob, doc.originalFileName);
-
       console.log('📡 发送图片提取请求...');
       const response = await fetch('/api/extract-images', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileId }),
       });
 
       const result = await response.json();
