@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { v4 as uuidv4 } from 'uuid';
 import { kv } from '@vercel/kv';
-import path from 'path';
 
 // Define the structure for our file metadata
 export interface FileMetadata {
@@ -13,7 +12,7 @@ export interface FileMetadata {
   status: 'uploaded' | 'processing' | 'processed' | 'error';
   uploadedAt: string;
   processedBlobUrl: string | null;
-  extractedImages: any[] | null; // Consider a more specific type later
+  extractedImages: string[] | null; // URLs of extracted images
 }
 
 
@@ -64,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   } catch (error) {
     console.error('Error during file upload and metadata creation:', error);
-    // @ts-ignore
+    // @ts-expect-error - error object may not have message property
     const message = error.message || 'An unknown error occurred';
     return NextResponse.json({ error: 'Failed to upload file.', details: message }, { status: 500 });
   }
